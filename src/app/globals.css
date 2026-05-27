@@ -1,0 +1,17 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0F1117; --surface: #1A1D27; --surface-alt: #21263A; --border: #2A2F45;
+  --accent: #F5A623; --accent-dim: #3D2D0A; --blue: #4A90E2; --blue-dim: #0E2040;
+  --green: #27AE60; --green-dim: #0A2615; --red: #E74C3C; --red-dim: #2D0B09;
+  --purple: #8E44AD; --purple-dim: #1E0A2D; --text: #E8ECF4;
+  --text-muted: #7B8299; --text-dim: #4A5068;
+  --font-main: 'DM Sans', system-ui, sans-serif;
+  --font-mono: 'Space Mono', monospace;
+}
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-main); }
+input, select, textarea, button { font-family: var(--font-main); }
+input[type="date"], input[type="time"] { color-scheme: dark; }
+::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+* { -webkit-tap-highlight-color: transparent; }
