@@ -311,6 +311,7 @@ export default function NuevoComprobantePage() {
   const [pickerSel, setPickerSel] = useState<Record<string, boolean>>({})
   const detRefs = useRef<Record<number, HTMLInputElement | null>>({})
   const [focusNext, setFocusNext] = useState<number | null>(null)
+  const [filaActiva, setFilaActiva] = useState<number>(0)
 
   // estado
   const [saving, setSaving] = useState(false)
@@ -464,6 +465,61 @@ export default function NuevoComprobantePage() {
       setModalPost(true)
     } catch (e: any) { setErrMsg(e?.message || 'Error al guardar') } finally { setSaving(false) }
   }
+
+  // ── Atajos de teclado (estilo ADMGlobal) ────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // No interferir si hay un input de texto activo (excepto atajos con Ctrl)
+      const tag = (document.activeElement as HTMLElement)?.tagName
+      const enInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+
+      // F8 — eliminar ítem activo
+      if (e.key === 'F8') {
+        e.preventDefault()
+        if (items.length > 1) delItem(filaActiva)
+        return
+      }
+      // Insert — agregar nuevo ítem
+      if (e.key === 'Insert') {
+        e.preventDefault()
+        addItem()
+        setFocusNext(items.length)
+        return
+      }
+      // Ctrl+N — nuevo comprobante
+      if (e.ctrlKey && e.key === 'n') {
+        e.preventDefault()
+        if (!modalPost && (saved || confirm('¿Descartás el comprobante actual y comenzás uno nuevo?'))) resetForm()
+        return
+      }
+      // Ctrl+S / F10 — guardar
+      if ((e.ctrlKey && e.key === 's') || e.key === 'F10') {
+        e.preventDefault()
+        if (!saving && !saved) guardar(false)
+        return
+      }
+      // Ctrl+P — imprimir (solo si ya fue guardado)
+      if (e.ctrlKey && e.key === 'p') {
+        e.preventDefault()
+        if (compGuardado) imprimirComp(compGuardado, empresa)
+        return
+      }
+      // Ctrl+E — exportar PDF
+      if (e.ctrlKey && e.key === 'e') {
+        e.preventDefault()
+        if (compGuardado) exportarPDFComp(compGuardado, empresa)
+        return
+      }
+      // Escape — cerrar modales
+      if (e.key === 'Escape') {
+        if (picker) { setPicker(null); return }
+        if (nuevoCli) { setNuevoCli(false); return }
+        if (modalPost) { return } // no cerrar el modal post sin acción explícita
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [items, filaActiva, saving, saved, modalPost, compGuardado, picker, nuevoCli, empresa])
 
   const resetForm = () => {
     setTipo('presupuesto')
@@ -750,9 +806,12 @@ export default function NuevoComprobantePage() {
                   </thead>
                   <tbody>
                     {items.map((it, i) => (
-                      <tr key={i} style={{ borderBottom: `1px solid ${C.border}`, background: i % 2 === 0 ? 'transparent' : C.surface }}
-                        onMouseEnter={e => (e.currentTarget.style.background = C.surfaceAlt)}
-                        onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : C.surface)}>
+                      <tr key={i}
+                        onFocus={() => setFilaActiva(i)}
+                        onClick={() => setFilaActiva(i)}
+                        style={{ borderBottom: `1px solid ${C.border}`, background: filaActiva === i ? C.accentDim : i % 2 === 0 ? 'transparent' : C.surface, outline: filaActiva === i ? `1px solid ${C.accent}40` : 'none' }}
+                        onMouseEnter={e => { if (filaActiva !== i) e.currentTarget.style.background = C.surfaceAlt }}
+                        onMouseLeave={e => { e.currentTarget.style.background = filaActiva === i ? C.accentDim : i % 2 === 0 ? 'transparent' : C.surface }}>
                         {/* # */}
                         <td style={{ padding: '6px 12px', textAlign: 'center', color: C.textDim, fontSize: 12 }}>{i + 1}</td>
                         {/* Código */}
@@ -855,6 +914,11 @@ export default function NuevoComprobantePage() {
             <div style={{ flex: 1 }} />
             <span style={{ color: C.textMuted, fontSize: 12 }}>
               {items.filter(it => it.detalle && num(it.cantidad) > 0).length} ítem(s) · {(tipo === 'factura_x' || tipo === 'recibo') ? (condicion === 'CUENTA CORRIENTE' ? '📒 Suma a cta. cte.' : `💵 Ingresa a caja (${medioPago})`) : ''}
+            </span>
+            <span style={{ color: C.textDim, fontSize: 11, display: 'flex', gap: 12 }}>
+              {[['Ins','+ ítem'],['F8','borrar fila'],['F10','guardar'],['Ctrl+N','nuevo'],['Ctrl+P','imprimir']].map(([k,v]) => (
+                <span key={k}><kbd style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 4, padding: '1px 5px', fontSize: 10, fontFamily: 'monospace' }}>{k}</kbd> {v}</span>
+              ))}
             </span>
             <div style={{ color: C.accent, fontSize: 18, fontWeight: 800, fontFamily: "'Space Mono', monospace" }}>{money(total)}</div>
           </footer>
