@@ -135,6 +135,11 @@ export default function NuevoComprobantePage() {
   const recGen = empresa?.recargo_general ?? 47.04
   const [recOn, setRecOn] = useState<boolean>(() => { try { return localStorage.getItem('logiobra_recargo') === '1' } catch { return false } })
 
+  // descuento contado
+  const descNombre = empresa?.descuento_contado_nombre || 'Descuento contado'
+  const descContadoPct = empresa?.descuento_contado_pct ?? 32
+  const [descOn, setDescOn] = useState<boolean>(false)
+
   // cliente
   const [clienteId, setClienteId] = useState('')
   const [clienteLibre, setClienteLibre] = useState('')
@@ -188,7 +193,8 @@ export default function NuevoComprobantePage() {
 
   // cálculos
   const subtotal = items.reduce((s, it) => s + num(it.cantidad) * num(it.precio), 0)
-  const descTotal = Math.round((subtotal * num(descPct) / 100 + num(descMonto)) * 100) / 100
+  const descContadoMonto = descOn ? Math.round(subtotal * descContadoPct / 100 * 100) / 100 : 0
+  const descTotal = Math.round((subtotal * num(descPct) / 100 + num(descMonto) + descContadoMonto) * 100) / 100
   const total = subtotal - descTotal + num(percep)
 
   const cliSeleccionado = clientes.find(c => c.id === clienteId)
@@ -407,12 +413,21 @@ export default function NuevoComprobantePage() {
             </span>
           </label>
 
+          {/* Descuento contado */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', background: descOn ? C.greenDim : C.surfaceAlt, border: `1px solid ${descOn ? C.green : C.border}`, borderRadius: 7, padding: '9px 10px' }}>
+            <input type="checkbox" checked={descOn} onChange={e => setDescOn(e.target.checked)} style={{ width: 14, height: 14, cursor: 'pointer' }} />
+            <span style={{ color: descOn ? C.green : C.textMuted, fontSize: 12, fontWeight: 700 }}>
+              {descNombre} {String(descContadoPct).replace('.', ',')}%
+            </span>
+          </label>
+
           <div style={{ flex: 1 }} />
 
           {/* Totales en sidebar */}
           <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <TotalRow label="Subtotal" value={subtotal} />
-            {descTotal > 0 && <TotalRow label={`Desc. (${descPct}%)`} value={-descTotal} color={C.green} />}
+            {(num(descPct) > 0 || num(descMonto) > 0) && <TotalRow label={`Desc. (${descPct}%)`} value={-(Math.round((subtotal * num(descPct) / 100 + num(descMonto)) * 100) / 100)} color={C.green} />}
+            {descOn && <TotalRow label={`${descNombre} (${descContadoPct}%)`} value={-descContadoMonto} color={C.green} />}
             {num(percep) > 0 && <TotalRow label="Percepciones" value={num(percep)} />}
             <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 8, marginTop: 2 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>

@@ -2568,7 +2568,9 @@ function ConfigView({empresa,onRefresh}:{empresa:EmpresaConfig|null;onRefresh:()
     nombre:e.nombre||'',cuit:e.cuit||'',iibb:e.iibb||'',condicion_iva:e.condicion_iva||'Responsable Inscripto',
     inicio_actividad:e.inicio_actividad||'',direccion:e.direccion||'',localidad:e.localidad||'',provincia:e.provincia||'',
     cp:e.cp||'',telefono:e.telefono||'',email:e.email||'',punto_venta:String(e.punto_venta??1),
-    recargo_general:String(e.recargo_general??47.04),descuento_general:String(e.descuento_general??0),logo_url:e.logo_url||'',pie_comprobante:e.pie_comprobante||''})
+    recargo_general:String(e.recargo_general??47.04),descuento_general:String(e.descuento_general??0),
+    descuento_contado_nombre:e.descuento_contado_nombre||'Descuento contado',descuento_contado_pct:String(e.descuento_contado_pct??32),
+    logo_url:e.logo_url||'',pie_comprobante:e.pie_comprobante||''})
   const [saving,setSaving]=useState(false);const [msg,setMsg]=useState('')
   const logoRef=useRef<HTMLInputElement>(null)
   const set=(k:string,v:string)=>setF((s:any)=>({...s,[k]:v}))
@@ -2590,7 +2592,7 @@ function ConfigView({empresa,onRefresh}:{empresa:EmpresaConfig|null;onRefresh:()
   const guardar=async()=>{
     setSaving(true);setMsg('')
     try{
-      await updateEmpresa({...f, punto_venta:parseInt(f.punto_venta)||1, recargo_general:parseFloat(String(f.recargo_general).replace(',','.'))||0, descuento_general:parseFloat(String(f.descuento_general).replace(',','.'))||0})
+      await updateEmpresa({...f, punto_venta:parseInt(f.punto_venta)||1, recargo_general:parseFloat(String(f.recargo_general).replace(',','.'))||0, descuento_general:parseFloat(String(f.descuento_general).replace(',','.'))||0, descuento_contado_pct:parseFloat(String(f.descuento_contado_pct).replace(',','.'))||0})
       onRefresh(); setMsg('✅ Configuración guardada')
     }catch(err:any){setMsg('⚠️ '+(err.message||'Error'))}
     finally{setSaving(false)}
@@ -2610,6 +2612,18 @@ function ConfigView({empresa,onRefresh}:{empresa:EmpresaConfig|null;onRefresh:()
         <input value={f.descuento_general} onChange={e=>set('descuento_general',e.target.value)} type="number" step="0.01"
           style={{width:120,background:C.bg,border:`1px solid ${C.green}55`,borderRadius:8,padding:'10px 12px',color:C.green,fontSize:18,fontWeight:800,outline:'none',textAlign:'right'}}/>
         <span style={{color:C.textMuted,fontSize:13}}>% — descuento sugerido por defecto (sí se muestra en el PDF)</span>
+      </div>
+      <div style={{borderTop:`1px solid ${C.border}`,marginTop:14,paddingTop:14}}>
+        <label style={{color:C.blue,fontSize:12,fontWeight:700,letterSpacing:0.5,display:'block',marginBottom:6}}>BOTÓN DESCUENTO CONTADO (en comprobantes)</label>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <input value={f.descuento_contado_nombre} onChange={e=>set('descuento_contado_nombre',e.target.value)}
+            placeholder="Descuento contado"
+            style={{flex:1,background:C.bg,border:`1px solid ${C.blue}55`,borderRadius:8,padding:'10px 12px',color:C.blue,fontSize:14,fontWeight:700,outline:'none'}}/>
+          <input value={f.descuento_contado_pct} onChange={e=>set('descuento_contado_pct',e.target.value)} type="number" step="0.01"
+            style={{width:100,background:C.bg,border:`1px solid ${C.blue}55`,borderRadius:8,padding:'10px 12px',color:C.blue,fontSize:18,fontWeight:800,outline:'none',textAlign:'right'}}/>
+          <span style={{color:C.textMuted,fontSize:13}}>%</span>
+        </div>
+        <div style={{color:C.textDim,fontSize:11,marginTop:6}}>Nombre y porcentaje del toggle de descuento rápido en la página de comprobantes</div>
       </div>
     </div>
 
