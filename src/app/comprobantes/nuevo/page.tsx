@@ -561,8 +561,8 @@ export default function NuevoComprobantePage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: C.surface, position: 'sticky', top: 0, zIndex: 10 }}>
-                      {['#', 'Código', 'Cantidad', 'Descripción', 'EM', 'Precio Unit.', 'Subtotal', ''].map((h, i) => (
-                        <th key={i} style={{ padding: '9px 12px', textAlign: i === 0 || i === 2 ? 'center' : i >= 4 ? 'right' : 'left', color: C.textMuted, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, borderBottom: `2px solid ${C.border}`, whiteSpace: 'nowrap', ...(i === 0 ? { width: 40 } : i === 1 ? { width: 100 } : i === 2 ? { width: 90 } : i === 4 ? { width: 60 } : i === 5 ? { width: 110 } : i === 6 ? { width: 120 } : i === 7 ? { width: 40 } : {}) }}>
+                      {['#', 'Código', 'Descripción', 'Cantidad', 'EM', 'Precio Unit.', 'Subtotal', ''].map((h, i) => (
+                        <th key={i} style={{ padding: '9px 12px', textAlign: i === 0 || i === 3 ? 'center' : i >= 4 ? 'right' : 'left', color: C.textMuted, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, borderBottom: `2px solid ${C.border}`, whiteSpace: 'nowrap', ...(i === 0 ? { width: 40 } : i === 1 ? { width: 100 } : i === 3 ? { width: 90 } : i === 4 ? { width: 60 } : i === 5 ? { width: 110 } : i === 6 ? { width: 120 } : i === 7 ? { width: 40 } : {}) }}>
                           {h}
                         </th>
                       ))}
@@ -584,13 +584,6 @@ export default function NuevoComprobantePage() {
                             onFocus={e => (e.currentTarget.style.borderColor = C.accent)}
                             onBlur={e => (e.currentTarget.style.borderColor = 'transparent')} />
                         </td>
-                        {/* Cantidad */}
-                        <td style={{ padding: '4px 6px' }}>
-                          <input type="number" value={it.cantidad} onChange={e => setItem(i, 'cantidad', e.target.value)}
-                            style={{ ...inputStyle, padding: '5px 8px', fontSize: 12, textAlign: 'center', background: 'transparent', border: `1px solid transparent` }}
-                            onFocus={e => (e.currentTarget.style.borderColor = C.accent)}
-                            onBlur={e => (e.currentTarget.style.borderColor = 'transparent')} />
-                        </td>
                         {/* Descripción / Búsqueda */}
                         <td style={{ padding: '4px 6px' }}>
                           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
@@ -602,14 +595,21 @@ export default function NuevoComprobantePage() {
                             <input value={it.detalle}
                               ref={el => { detRefs.current[i] = el }}
                               onChange={e => setItem(i, 'detalle', e.target.value)}
-                              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); buscarItem(i, (e.target as HTMLInputElement).value) } }}
-                              placeholder="Descripción o código + Enter ↵"
+                              placeholder="Descripción o código..."
                               style={{ ...inputStyle, padding: '5px 8px', fontSize: 12, flex: 1, background: 'transparent', border: `1px solid transparent` }}
                               onFocus={e => (e.currentTarget.style.borderColor = C.accent)}
                               onBlur={e => (e.currentTarget.style.borderColor = 'transparent')} />
                             <button onClick={() => buscarItem(i)}
                               style={{ background: C.blueDim, color: C.blue, border: `1px solid ${C.blue}30`, borderRadius: 5, padding: '4px 7px', cursor: 'pointer', fontSize: 11 }}>🔍</button>
                           </div>
+                        </td>
+                        {/* Cantidad — Enter aquí dispara la búsqueda */}
+                        <td style={{ padding: '4px 6px' }}>
+                          <input type="number" value={it.cantidad} onChange={e => setItem(i, 'cantidad', e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); buscarItem(i) } }}
+                            style={{ ...inputStyle, padding: '5px 8px', fontSize: 12, textAlign: 'center', background: 'transparent', border: `1px solid transparent` }}
+                            onFocus={e => (e.currentTarget.style.borderColor = C.accent)}
+                            onBlur={e => (e.currentTarget.style.borderColor = 'transparent')} />
                         </td>
                         {/* EM */}
                         <td style={{ padding: '4px 6px', color: C.textDim, fontSize: 11, textAlign: 'right' }}>
