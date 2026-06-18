@@ -108,8 +108,9 @@ function imprimirComp(comp: any, empresa: EmpresaConfig | null) {
     .sistema { text-align: center; color: #999; font-size: 9px; margin-top: 20px; border-top: 1px solid #ddd; padding-top: 6px; }
 
     @media print {
+      @page { margin: 0; }
       body { -webkit-print-color-adjust: exact; }
-      .page { padding: 10mm 14mm; }
+      .page { padding: 12mm 16mm; }
     }
   </style>
   </head><body><div class="page">
