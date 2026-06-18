@@ -284,7 +284,7 @@ export default function NuevoComprobantePage() {
 
   // recargo
   const recGen = empresa?.recargo_general ?? 47.04
-  const [recOn, setRecOn] = useState<boolean>(() => { try { return localStorage.getItem('logiobra_recargo') === '1' } catch { return false } })
+  const [recOn, setRecOn] = useState<boolean>(false)
 
   // descuento contado
   const descNombre = empresa?.descuento_contado_nombre || 'Descuento contado'
@@ -410,7 +410,6 @@ export default function NuevoComprobantePage() {
 
   const toggleRec = (on: boolean) => {
     setRecOn(on)
-    try { localStorage.setItem('logiobra_recargo', on ? '1' : '0') } catch { }
     setItems(a => a.map(it => {
       const p = num(it.precio)
       if (!p) return it
