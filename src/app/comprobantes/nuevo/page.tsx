@@ -259,8 +259,13 @@ export default function NuevoComprobantePage() {
     setRecOn(on)
     try { localStorage.setItem('logiobra_recargo', on ? '1' : '0') } catch { }
     setItems(a => a.map(it => {
-      const m = materiales.find(x => x.nombre === it.detalle)
-      return m ? { ...it, precio: String(precioCon(m, on)) } : it
+      const p = num(it.precio)
+      if (!p) return it
+      const factor = 1 + recGen / 100
+      const newPrecio = on
+        ? Math.round(p * factor * 100) / 100
+        : Math.round(p / factor * 100) / 100
+      return { ...it, precio: String(newPrecio) }
     }))
   }
 
