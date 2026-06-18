@@ -158,6 +158,7 @@ function imprimirComp(comp: any, empresa: EmpresaConfig | null) {
       ${cl.localidad ? `<div><span class="lbl">Localidad:</span> ${cl.localidad}</div>` : ''}
       ${cl.cuit ? `<div><span class="lbl">CUIT:</span> ${cl.cuit}</div>` : ''}
       ${cl.dni ? `<div><span class="lbl">DNI:</span> ${cl.dni}</div>` : ''}
+      ${cl.telefono ? `<div><span class="lbl">Tel:</span> ${cl.telefono}</div>` : ''}
       <div style="margin-top:3px;font-weight:700">${(comp.condicion_pago || 'CONTADO').toUpperCase()}</div>
     </div>
     <div style="text-align:right">
