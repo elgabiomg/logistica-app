@@ -141,6 +141,7 @@ export default function NuevoComprobantePage() {
   const [cliQuery, setCliQuery] = useState('')
   const [cliOpen, setCliOpen] = useState(false)
   const [tabCliente, setTabCliente] = useState<'datos' | 'direccion' | 'obs'>('datos')
+  const [nuevoCli, setNuevoCli] = useState(false)
 
   // items
   const [items, setItems] = useState<ItemRow[]>([
@@ -458,7 +459,7 @@ export default function NuevoComprobantePage() {
                             onFocus={() => setCliOpen(true)}
                             placeholder="Buscar por nombre, DNI o CUIT..."
                             style={{ ...inputStyle, flex: 1 }} />
-                          <button onClick={() => { }}
+                          <button onClick={() => setNuevoCli(true)}
                             style={{ background: C.greenDim, color: C.green, border: `1px solid ${C.green}40`, borderRadius: 6, padding: '0 10px', cursor: 'pointer', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>+ Nuevo</button>
                         </div>}
                     </Field>
@@ -679,6 +680,28 @@ export default function NuevoComprobantePage() {
         </main>
       </div>
 
+      {/* ── MODAL NUEVO CLIENTE ── */}
+      {nuevoCli && (
+        <div onClick={() => setNuevoCli(false)} style={{ position: 'fixed', inset: 0, background: '#000C', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, width: '90%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px #000A' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+              <h3 style={{ color: C.text, fontSize: 16, fontWeight: 800, margin: 0 }}>Nuevo Cliente</h3>
+              <button onClick={() => setNuevoCli(false)} style={{ background: C.surfaceAlt, border: 'none', color: C.text, width: 30, height: 30, borderRadius: 7, cursor: 'pointer', fontSize: 15 }}>✕</button>
+            </div>
+            <NuevoClienteForm
+              prefill={cliQuery}
+              onClose={() => setNuevoCli(false)}
+              onCreated={(c) => {
+                setClientes(prev => [c, ...prev])
+                setClienteId(c.id)
+                setCliQuery('')
+                setCliOpen(false)
+                setNuevoCli(false)
+              }} />
+          </div>
+        </div>
+      )}
+
       {/* ── PICKER MÚLTIPLE ── */}
       {picker && (
         <div onClick={() => setPicker(null)} style={{ position: 'fixed', inset: 0, background: '#000C', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -705,6 +728,60 @@ export default function NuevoComprobantePage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+const CONDICIONES_IVA = ['Consumidor Final', 'Responsable Inscripto', 'Monotributo', 'Exento', 'IVA No Alcanzado']
+
+function NuevoClienteForm({ prefill, onClose, onCreated }: { prefill?: string; onClose: () => void; onCreated: (c: Cliente) => void }) {
+  const [f, setF] = useState({ nombre: prefill || '', condicion_iva: 'Consumidor Final', cuit: '', dni: '', telefono: '', direccion: '', localidad: '', provincia: '', cp: '', email: '' })
+  const [saving, setSaving] = useState(false)
+  const set = (k: string, v: string) => setF(p => ({ ...p, [k]: v }))
+  const guardar = async () => {
+    if (!f.nombre.trim()) return
+    setSaving(true)
+    try {
+      const nc = await createCliente({ ...f, creado_por: getOp() } as any)
+      logAct('Creó', 'Cliente', f.nombre, (nc as any)?.id)
+      onCreated(nc as Cliente)
+    } catch { } finally { setSaving(false) }
+  }
+  const fi = (label: string, key: string, type = 'text') => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <label style={{ color: C.textMuted, fontSize: 10, fontWeight: 700, letterSpacing: 0.8 }}>{label.toUpperCase()}</label>
+      <input type={type} value={(f as any)[key]} onChange={e => set(key, e.target.value)}
+        style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: '7px 10px', color: C.text, fontSize: 13, outline: 'none' }} />
+    </div>
+  )
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {fi('Nombre / Razón social', 'nombre')}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <label style={{ color: C.textMuted, fontSize: 10, fontWeight: 700, letterSpacing: 0.8 }}>CONDICIÓN IVA</label>
+        <select value={f.condicion_iva} onChange={e => set('condicion_iva', e.target.value)}
+          style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: '7px 10px', color: C.text, fontSize: 13, outline: 'none' }}>
+          {CONDICIONES_IVA.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        {fi('CUIT', 'cuit')}
+        {fi('DNI', 'dni')}
+        {fi('Teléfono', 'telefono', 'tel')}
+        {fi('Email', 'email', 'email')}
+      </div>
+      {fi('Dirección', 'direccion')}
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr', gap: 10 }}>
+        {fi('Localidad', 'localidad')}
+        {fi('Provincia', 'provincia')}
+        {fi('CP', 'cp')}
+      </div>
+      <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+        <button onClick={onClose} style={{ flex: 1, background: C.surfaceAlt, color: C.textMuted, border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px', fontSize: 13, cursor: 'pointer' }}>Cancelar</button>
+        <button onClick={guardar} disabled={saving || !f.nombre.trim()} style={{ flex: 2, background: C.accent, color: '#000', border: 'none', borderRadius: 8, padding: '10px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+          {saving ? 'Guardando...' : '💾 Guardar cliente'}
+        </button>
+      </div>
     </div>
   )
 }
