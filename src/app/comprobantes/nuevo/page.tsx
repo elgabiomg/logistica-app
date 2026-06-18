@@ -33,56 +33,175 @@ function imprimirComp(comp: any, empresa: EmpresaConfig | null) {
   const cl = comp.clientes || {}
   const items: ComprobanteItem[] = comp.comprobante_items || []
   const e = empresa || {} as EmpresaConfig
-  const logo = e.logo_url ? `<img src="${e.logo_url}" style="max-width:90px;max-height:80px"/>` : ''
+  const logo = e.logo_url ? `<img src="${e.logo_url}" style="max-height:72px;max-width:120px;display:block;margin:0 auto 4px"/>` : ''
   const esRemito = comp.tipo === 'remito'
+  const esPresupuesto = comp.tipo === 'presupuesto'
+  const esFacturaX = comp.tipo === 'factura_x'
+
+  const textoLegal = esPresupuesto
+    ? `<p>Los precios pueden estar sujetos a modificación sin aviso previo.</p>
+       <p>Los valores y bonif. extras por cantidad a tener en cuenta por compra total únicamente.</p>
+       <p>Modificaciones en las cantidades pedidas puede influir en el valor del material.</p>
+       <p style="font-weight:700">Vigencia del presupuesto: 24 hs corridas.</p>`
+    : esFacturaX
+    ? `<p>La entrega de los materiales se realiza en el plazo de 3-6 días hábiles.</p>`
+    : (comp.observaciones || '').replace(/\n/g, '<br>')
+
   const fila = (i: ComprobanteItem) => esRemito
     ? `<tr><td class="c">${i.cantidad}</td><td>${i.codigo || ''}</td><td>${i.detalle}</td></tr>`
-    : `<tr><td class="c">${i.cantidad}</td><td>${i.codigo || ''}</td><td>${i.detalle}</td><td class="r">${money(i.precio_unitario)}</td><td class="r">${money(i.importe)}</td></tr>`
+    : `<tr>
+        <td class="c">${i.cantidad}</td>
+        <td class="c">${i.codigo || ''}</td>
+        <td>${i.detalle}</td>
+        <td class="r">${money(i.precio_unitario)}</td>
+        <td class="r">${money(i.importe)}</td>
+       </tr>`
+
   const w = window.open('', '_blank')
   if (!w) return
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${t.label} ${fmt(comp.punto_venta, comp.numero)}</title>
-  <style>*{box-sizing:border-box;font-family:Arial,sans-serif}body{margin:0;padding:26px 30px;color:#1a1a1a;font-size:11px}
-  .r{text-align:right}.c{text-align:center}.lbl{color:#1c3f8f}
-  .hdr{display:flex;align-items:flex-start;border-bottom:2px solid #1a1a1a;padding-bottom:10px}
-  .hdr>div{flex:1}.big{font-size:48px;font-weight:800;text-align:center;line-height:.9}
-  .sub{display:flex;justify-content:space-between;margin-top:10px;padding-bottom:10px;border-bottom:1px solid #aaa}
-  .cli{margin-top:10px;border-bottom:1px solid #aaa;padding-bottom:8px;display:flex;justify-content:space-between}
-  table.items{width:100%;border-collapse:collapse;margin-top:6px}
-  table.items th{border-bottom:1.5px solid #1a1a1a;text-align:left;padding:4px 6px}
-  table.items td{padding:3px 6px;border:none}
-  .foot{display:flex;justify-content:space-between;margin-top:24px;align-items:flex-start}
-  table.tot{border-collapse:collapse;min-width:230px}table.tot td{padding:4px 10px;border:1px solid #ccc}
-  table.tot tr:last-child td{font-weight:800;font-size:14px;background:#f3f3f3}
-  .pie{text-align:center;color:#666;font-size:10px;margin-top:26px;border-top:1px solid #ccc;padding-top:6px}
-  </style></head><body>
-  <div class="hdr"><div style="text-align:center;max-width:120px">${logo}<div style="font-weight:800;font-size:13px">${e.nombre || ''}</div></div>
-  <div><div class="big">${t.letra}</div><div class="c" style="font-size:9px;color:#444">${t.leyenda}</div></div>
-  <div class="r"><div style="font-weight:800;font-size:15px">${fmt(comp.punto_venta, comp.numero)}</div>
-  <div><b class="lbl">FECHA:</b> ${comp.fecha}</div></div></div>
-  <div class="sub"><div><div style="font-weight:800;font-size:13px">${e.nombre || ''}</div>
-  <div>${e.direccion || ''}</div><div>${e.localidad || ''}</div><div>${e.telefono || ''}</div></div>
-  <div class="c"><b>ORIGINAL</b></div>
-  <div class="r"><div><b class="lbl">CUIT:</b> ${e.cuit || ''}</div><div><b class="lbl">IIBB:</b> ${e.iibb || ''}</div></div></div>
-  <div class="cli"><div style="line-height:1.6">
-  <div><b class="lbl">Cliente:</b> ${comp.cliente_nombre || cl.nombre || ''}</div>
-  <div><b class="lbl">Dirección:</b> ${cl.direccion || ''}</div>
-  <div><b class="lbl">CUIT:</b> ${cl.cuit || ''} &nbsp;<b class="lbl">DNI:</b> ${cl.dni || ''}</div>
-  <div><b>${(comp.condicion_pago || 'CONTADO').toUpperCase()}</b></div></div>
-  <div class="r" style="line-height:1.6"><div><b class="lbl">Vendedor:</b> ${comp.vendedor || ''}</div>
-  <div><b class="lbl">IVA:</b> ${cl.condicion_iva || 'Consumidor Final'}</div></div></div>
-  <table class="items"><thead><tr><th class="c" style="width:55px">Cant.</th><th style="width:90px">Código</th>
-  <th>Detalle</th>${esRemito ? '' : '<th class="r" style="width:95px">P.Unit.</th><th class="r" style="width:100px">Importe</th>'}</tr></thead>
-  <tbody>${items.map(fila).join('')}</tbody></table>
-  ${esRemito
-    ? `<div class="foot"><div style="max-width:55%;font-size:10px">${(comp.observaciones || '').replace(/\n/g, '<br>')}</div>
-       <div style="text-align:center;font-size:10px;min-width:240px;margin-top:30px"><div style="border-top:1px solid #1a1a1a;padding-top:5px">Recibí conforme — Firma y aclaración</div></div></div>`
-    : `<div class="foot"><div style="max-width:55%;font-size:10px">${(comp.observaciones || e.pie_comprobante || '').replace(/\n/g, '<br>')}</div>
-       <table class="tot"><tr><td>Subtotal:</td><td class="r">${money(comp.subtotal)}</td></tr>
-       ${Number(comp.descuento) > 0 ? `<tr><td>Descuento:</td><td class="r">− ${money(comp.descuento)}</td></tr>` : ''}
-       ${Number(comp.percepciones) > 0 ? `<tr><td>Percepciones:</td><td class="r">${money(comp.percepciones)}</td></tr>` : ''}
-       <tr><td>TOTAL $</td><td class="r">${money(comp.total)}</td></tr></table></div>`}
-  <div class="pie">Comprobante generado por LogiObra — Sistema de Gestión</div>
-  <script>window.onload=function(){window.print()}<\/script></body></html>`)
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8">
+  <title>${t.label} ${fmt(comp.punto_venta, comp.numero)}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1a1a1a; background: #fff; }
+    .page { width: 210mm; min-height: 297mm; margin: 0 auto; padding: 14mm 16mm; }
+    .lbl { color: #1c3f8f; font-weight: 700; }
+
+    /* ── CABECERA ── */
+    .hdr { display: grid; grid-template-columns: 1fr 80px 1fr; align-items: center; border-bottom: 2.5px solid #1a1a1a; padding-bottom: 10px; gap: 10px; }
+    .hdr-empresa { display: flex; align-items: center; gap: 10px; }
+    .hdr-empresa-txt { font-size: 15px; font-weight: 800; letter-spacing: .5px; }
+    .hdr-empresa-sub { font-size: 10px; color: #444; margin-top: 3px; }
+    .hdr-letra { text-align: center; }
+    .hdr-letra .big { font-size: 56px; font-weight: 900; line-height: 1; }
+    .hdr-letra .leyenda { font-size: 9px; color: #555; margin-top: 2px; }
+    .hdr-num { text-align: right; }
+    .hdr-num .num { font-size: 16px; font-weight: 800; letter-spacing: 1px; }
+    .hdr-num .fecha { margin-top: 5px; font-size: 11px; }
+
+    /* ── EMPRESA ── */
+    .empresa { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; border-bottom: 1px solid #bbb; padding: 8px 0; font-size: 10.5px; line-height: 1.7; }
+    .empresa .original { text-align: center; font-weight: 800; font-size: 12px; align-self: center; padding: 0 8px; border-left: 1px solid #ccc; border-right: 1px solid #ccc; }
+    .empresa .derecha { text-align: right; }
+
+    /* ── CLIENTE ── */
+    .cliente { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; border-bottom: 1px solid #bbb; padding: 8px 0; font-size: 10.5px; line-height: 1.75; }
+
+    /* ── TABLA ── */
+    table.items { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    table.items thead tr { border-bottom: 2px solid #1a1a1a; }
+    table.items th { padding: 5px 6px; font-size: 10.5px; font-weight: 700; color: #1a1a1a; }
+    table.items td { padding: 4px 6px; font-size: 10.5px; border-bottom: 1px solid #eee; }
+    table.items tbody tr:last-child td { border-bottom: none; }
+    .c { text-align: center; }
+    .r { text-align: right; }
+
+    /* ── PIE ── */
+    .foot { display: grid; grid-template-columns: 1fr auto; gap: 20px; margin-top: 18px; align-items: start; }
+    .legal { font-size: 10px; color: #444; line-height: 1.6; }
+    .legal p { margin-bottom: 3px; }
+    table.tot { border-collapse: collapse; min-width: 210px; }
+    table.tot td { padding: 5px 12px; border: 1px solid #ccc; font-size: 11px; }
+    table.tot tr.total td { font-weight: 800; font-size: 13px; background: #f0f0f0; border-top: 2px solid #1a1a1a; }
+    .firma { margin-top: 30px; text-align: center; font-size: 10px; color: #444; }
+    .firma-linea { border-top: 1px solid #1a1a1a; padding-top: 4px; display: inline-block; min-width: 200px; }
+    .sistema { text-align: center; color: #999; font-size: 9px; margin-top: 20px; border-top: 1px solid #ddd; padding-top: 6px; }
+
+    @media print {
+      body { -webkit-print-color-adjust: exact; }
+      .page { padding: 10mm 14mm; }
+    }
+  </style>
+  </head><body><div class="page">
+
+  <!-- CABECERA -->
+  <div class="hdr">
+    <div class="hdr-empresa">
+      ${logo}
+      <div>
+        <div class="hdr-empresa-txt">${e.nombre || ''}</div>
+        <div class="hdr-empresa-sub">${e.direccion || ''}${e.localidad ? ' — ' + e.localidad : ''}</div>
+        <div class="hdr-empresa-sub">${e.telefono || ''}</div>
+      </div>
+    </div>
+    <div class="hdr-letra">
+      <div class="big">${t.letra}</div>
+      <div class="leyenda">${t.leyenda}</div>
+    </div>
+    <div class="hdr-num">
+      <div class="num">${fmt(comp.punto_venta, comp.numero)}</div>
+      <div class="fecha"><span class="lbl">FECHA:</span> ${comp.fecha || ''}</div>
+    </div>
+  </div>
+
+  <!-- DATOS EMPRESA -->
+  <div class="empresa">
+    <div>
+      <div style="font-weight:800;font-size:12px;margin-bottom:2px">${e.nombre || ''}</div>
+      ${e.direccion ? `<div>${e.direccion}</div>` : ''}
+      ${e.localidad ? `<div>${e.localidad}${e.provincia ? ', ' + e.provincia : ''}</div>` : ''}
+      ${e.condicion_iva ? `<div>${e.condicion_iva}</div>` : ''}
+    </div>
+    <div class="original">ORIGINAL</div>
+    <div class="derecha">
+      ${e.cuit ? `<div><span class="lbl">CUIT:</span> ${e.cuit}</div>` : ''}
+      ${e.iibb ? `<div><span class="lbl">IIBB:</span> ${e.iibb}</div>` : ''}
+      ${e.inicio_actividad ? `<div><span class="lbl">Inicio actividad:</span> ${e.inicio_actividad}</div>` : ''}
+    </div>
+  </div>
+
+  <!-- DATOS CLIENTE -->
+  <div class="cliente">
+    <div>
+      <div><span class="lbl">Cliente:</span> ${comp.cliente_nombre || cl.nombre || 'Consumidor Final'}</div>
+      ${cl.direccion ? `<div><span class="lbl">Dirección:</span> ${cl.direccion}</div>` : ''}
+      ${cl.localidad ? `<div><span class="lbl">Localidad:</span> ${cl.localidad}</div>` : ''}
+      ${cl.cuit ? `<div><span class="lbl">CUIT:</span> ${cl.cuit}</div>` : ''}
+      ${cl.dni ? `<div><span class="lbl">DNI:</span> ${cl.dni}</div>` : ''}
+      <div style="margin-top:3px;font-weight:700">${(comp.condicion_pago || 'CONTADO').toUpperCase()}</div>
+    </div>
+    <div style="text-align:right">
+      <div><span class="lbl">Vendedor:</span> ${comp.vendedor || ''}</div>
+      <div><span class="lbl">IVA:</span> ${cl.condicion_iva || 'Consumidor Final'}</div>
+      ${comp.numero ? `<div><span class="lbl">Comprobante N°:</span> ${comp.numero}</div>` : ''}
+    </div>
+  </div>
+
+  <!-- TABLA ÍTEMS -->
+  <table class="items">
+    <thead>
+      <tr>
+        <th class="c" style="width:52px">Cant.</th>
+        <th class="c" style="width:80px">Código</th>
+        <th>Detalle</th>
+        ${esRemito ? '' : '<th class="r" style="width:90px">P. Unit.</th><th class="r" style="width:100px">Importe</th>'}
+      </tr>
+    </thead>
+    <tbody>${items.map(fila).join('')}</tbody>
+  </table>
+
+  <!-- PIE -->
+  ${esRemito ? `
+  <div class="foot" style="margin-top:24px">
+    <div class="legal">${textoLegal}</div>
+    <div class="firma"><div class="firma-linea">Recibí conforme — Firma y aclaración</div></div>
+  </div>
+  ` : `
+  <div class="foot">
+    <div class="legal">${textoLegal}</div>
+    <table class="tot">
+      <tr><td>Subtotal:</td><td class="r">${money(comp.subtotal)}</td></tr>
+      ${Number(comp.descuento) > 0 ? `<tr><td>Descuento${comp.descuento_pct ? ' (' + comp.descuento_pct + '%)' : ''}:</td><td class="r">− ${money(comp.descuento)}</td></tr>` : ''}
+      ${Number(comp.percepciones) > 0 ? `<tr><td>Percepciones:</td><td class="r">${money(comp.percepciones)}</td></tr>` : ''}
+      <tr class="total"><td>TOTAL $</td><td class="r">${money(comp.total)}</td></tr>
+    </table>
+  </div>
+  `}
+
+  <div class="sistema">Comprobante generado por LogiObra — Sistema de Gestión</div>
+  </div>
+  <script>window.onload=function(){window.print()}<\/script>
+  </body></html>`)
   w.document.close()
 }
 
