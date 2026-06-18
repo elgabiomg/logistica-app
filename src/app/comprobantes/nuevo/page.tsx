@@ -198,7 +198,6 @@ function imprimirComp(comp: any, empresa: EmpresaConfig | null) {
   </div>
   `}
 
-  <div class="sistema">Comprobante generado por LogiObra — Sistema de Gestión</div>
   </div>
   <script>window.onload=function(){window.print()}<\/script>
   </body></html>`)
