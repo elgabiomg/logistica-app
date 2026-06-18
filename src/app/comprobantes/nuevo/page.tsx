@@ -595,7 +595,8 @@ export default function NuevoComprobantePage() {
                             <input value={it.detalle}
                               ref={el => { detRefs.current[i] = el }}
                               onChange={e => setItem(i, 'detalle', e.target.value)}
-                              placeholder="Descripción o código..."
+                              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); buscarItem(i, (e.target as HTMLInputElement).value) } }}
+                              placeholder="Descripción o código + Enter ↵"
                               style={{ ...inputStyle, padding: '5px 8px', fontSize: 12, flex: 1, background: 'transparent', border: `1px solid transparent` }}
                               onFocus={e => (e.currentTarget.style.borderColor = C.accent)}
                               onBlur={e => (e.currentTarget.style.borderColor = 'transparent')} />
