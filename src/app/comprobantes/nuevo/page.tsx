@@ -28,7 +28,7 @@ const TIPOS: Record<TipoComprobante, { label: string; letra: string; leyenda: st
 
 interface ItemRow { codigo: string; detalle: string; cantidad: string; precio: string }
 
-function imprimirComp(comp: any, empresa: EmpresaConfig | null) {
+function generarHTMLComp(comp: any, empresa: EmpresaConfig | null): string {
   const t = TIPOS[comp.tipo as TipoComprobante]
   const cl = comp.clientes || {}
   const items: ComprobanteItem[] = comp.comprobante_items || []
@@ -57,9 +57,7 @@ function imprimirComp(comp: any, empresa: EmpresaConfig | null) {
         <td class="r">${money(i.importe)}</td>
        </tr>`
 
-  const w = window.open('', '_blank')
-  if (!w) return
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8">
+  const html = `<!doctype html><html><head><meta charset="utf-8">
   <title>${t.label} ${fmt(comp.punto_venta, comp.numero)}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -200,9 +198,43 @@ function imprimirComp(comp: any, empresa: EmpresaConfig | null) {
   `}
 
   </div>
-  <script>window.onload=function(){window.print()}<\/script>
-  </body></html>`)
+  </body></html>`
+
+  return html
+}
+
+function imprimirComp(comp: any, empresa: EmpresaConfig | null) {
+  const html = generarHTMLComp(comp, empresa)
+  const w = window.open('', '_blank')
+  if (!w) return
+  w.document.write(html.replace('</body>', '<script>window.onload=function(){window.print()}<\/script></body>'))
   w.document.close()
+}
+
+function exportarPDFComp(comp: any, empresa: EmpresaConfig | null) {
+  const t = TIPOS[comp.tipo as TipoComprobante]
+  const nombre = comp.cliente_nombre || 'ConsumidorFinal'
+  const numero = fmt(comp.punto_venta || 1, comp.numero || 0)
+  const filename = `${t.label}_${numero}_${nombre.replace(/\s+/g, '_')}.pdf`
+
+  const html = generarHTMLComp(comp, empresa)
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+
+  // Abre en nueva pestaña con título = filename para que el navegador sugiera ese nombre al guardar como PDF
+  const w = window.open('', '_blank')
+  if (!w) return
+  w.document.write(html.replace(
+    '<title>',
+    `<title data-filename="${filename}">`
+  ).replace('</body>', `<script>
+    document.title = "${filename.replace('.pdf', '')}";
+    window.onload = function() {
+      window.print();
+    };
+  <\/script></body>`))
+  w.document.close()
+  URL.revokeObjectURL(url)
 }
 
 // ── Colores ──────────────────────────────────────────────────────────
@@ -284,6 +316,8 @@ export default function NuevoComprobantePage() {
   const [saving, setSaving] = useState(false)
   const [errMsg, setErrMsg] = useState('')
   const [saved, setSaved] = useState(false)
+  const [compGuardado, setCompGuardado] = useState<any>(null)
+  const [modalPost, setModalPost] = useState(false)
 
   // cargar datos
   useEffect(() => {
@@ -425,13 +459,25 @@ export default function NuevoComprobantePage() {
           await createCajaMov({ tipo: 'ingreso', monto: total, concepto: `${TIPOS[tipo].label} N° ${fmt(empresa?.punto_venta || 1, comp.numero)} · ${nombreCli}`, medio_pago: medioPago, categoria: 'Ventas contado', cliente_id: clienteId || null, comprobante_id: comp.id, fecha, creado_por: oper } as any)
         }
       }
-      if (imprimir) {
-        const full = await getComprobante(comp.id)
-        imprimirComp(full, empresa)
-      }
+      const full = await getComprobante(comp.id)
+      setCompGuardado(full)
       setSaved(true)
-      setTimeout(() => router.push('/'), 1200)
+      setModalPost(true)
     } catch (e: any) { setErrMsg(e?.message || 'Error al guardar') } finally { setSaving(false) }
+  }
+
+  const resetForm = () => {
+    setTipo('presupuesto')
+    setFecha(new Date().toISOString().slice(0, 10))
+    setClienteId(''); setClienteLibre(''); setCliQuery('')
+    setCondicion('CONTADO'); setMedioPago('efectivo')
+    setItems([{ codigo: '', detalle: '', cantidad: '1', precio: '' }])
+    setDescPct(String(empresa?.descuento_general ?? 0))
+    setDescMonto('0'); setPercep('0')
+    setObs(empresa?.pie_comprobante || '')
+    setDescOn(false)
+    setSaved(false); setCompGuardado(null); setModalPost(false)
+    proximoNumero('presupuesto').then(setNroPreview).catch(() => {})
   }
 
   // ── Render ───────────────────────────────────────────────────────
@@ -471,12 +517,8 @@ export default function NuevoComprobantePage() {
         </div>
         <div style={{ width: 1, height: 24, background: C.border }} />
         <button onClick={() => guardar(false)} disabled={saving || saved}
-          style={{ background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}`, borderRadius: 7, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer' }}>
-          {saving ? '...' : '💾 Guardar'}
-        </button>
-        <button onClick={() => guardar(true)} disabled={saving || saved}
-          style={{ background: saving || saved ? C.surfaceAlt : C.accent, color: saving || saved ? C.textMuted : '#000', border: 'none', borderRadius: 7, padding: '7px 16px', fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer' }}>
-          {saved ? '✓ Guardado' : saving ? '...' : '🖨️ Guardar e imprimir'}
+          style={{ background: saving || saved ? C.surfaceAlt : C.accent, color: saving || saved ? C.textMuted : '#000', border: 'none', borderRadius: 7, padding: '7px 20px', fontSize: 13, fontWeight: 700, cursor: saving || saved ? 'not-allowed' : 'pointer' }}>
+          {saved ? '✓ Guardado' : saving ? 'Guardando...' : '💾 Guardar'}
         </button>
       </header>
 
@@ -819,6 +861,60 @@ export default function NuevoComprobantePage() {
           </footer>
         </main>
       </div>
+
+      {/* ── MODAL POST-GUARDADO ── */}
+      {modalPost && compGuardado && (
+        <div style={{ position: 'fixed', inset: 0, background: '#000D', zIndex: 5000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 32, width: 420, boxShadow: '0 24px 80px #000C', display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* Ícono + título */}
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 48, marginBottom: 8 }}>✅</div>
+              <div style={{ color: C.text, fontSize: 18, fontWeight: 800 }}>
+                {TIPOS[compGuardado.tipo as TipoComprobante]?.label} guardado
+              </div>
+              <div style={{ color: C.textMuted, fontSize: 13, marginTop: 4 }}>
+                N° {fmt(compGuardado.punto_venta, compGuardado.numero)} · {money(compGuardado.total)}
+              </div>
+            </div>
+
+            {/* Opciones */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button onClick={() => exportarPDFComp(compGuardado, empresa)}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, background: C.accentDim, border: `1px solid ${C.accent}50`, borderRadius: 10, padding: '14px 18px', cursor: 'pointer', textAlign: 'left' }}>
+                <span style={{ fontSize: 24 }}>📥</span>
+                <div>
+                  <div style={{ color: C.accent, fontWeight: 700, fontSize: 14 }}>Exportar PDF</div>
+                  <div style={{ color: C.textMuted, fontSize: 11, marginTop: 2 }}>Guardá el archivo en "Presupuestos Hornero"</div>
+                </div>
+              </button>
+
+              <button onClick={() => imprimirComp(compGuardado, empresa)}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, background: C.blueDim, border: `1px solid ${C.blue}50`, borderRadius: 10, padding: '14px 18px', cursor: 'pointer', textAlign: 'left' }}>
+                <span style={{ fontSize: 24 }}>🖨️</span>
+                <div>
+                  <div style={{ color: C.blue, fontWeight: 700, fontSize: 14 }}>Imprimir</div>
+                  <div style={{ color: C.textMuted, fontSize: 11, marginTop: 2 }}>Enviá directamente a la impresora</div>
+                </div>
+              </button>
+
+              <button onClick={resetForm}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, background: C.greenDim, border: `1px solid ${C.green}50`, borderRadius: 10, padding: '14px 18px', cursor: 'pointer', textAlign: 'left' }}>
+                <span style={{ fontSize: 24 }}>➕</span>
+                <div>
+                  <div style={{ color: C.green, fontWeight: 700, fontSize: 14 }}>Hacer otro comprobante</div>
+                  <div style={{ color: C.textMuted, fontSize: 11, marginTop: 2 }}>Limpia el formulario para uno nuevo</div>
+                </div>
+              </button>
+            </div>
+
+            {/* Volver al listado */}
+            <button onClick={() => router.push('/')}
+              style={{ background: 'none', border: 'none', color: C.textMuted, fontSize: 12, cursor: 'pointer', textDecoration: 'underline', textAlign: 'center' }}>
+              Volver al listado de comprobantes
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── MODAL NUEVO CLIENTE ── */}
       {nuevoCli && (
