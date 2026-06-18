@@ -125,8 +125,7 @@ function imprimirComp(comp: any, empresa: EmpresaConfig | null) {
       </div>
     </div>
     <div class="hdr-letra">
-      <div class="big">${t.letra}</div>
-      <div class="leyenda">${t.leyenda}</div>
+      ${esFacturaX ? `<div class="big">${t.letra}</div><div class="leyenda">${t.leyenda}</div>` : `<div style="font-size:13px;font-weight:700;color:#555;text-align:center">${t.label}</div>`}
     </div>
     <div class="hdr-num">
       <div class="num">${fmt(comp.punto_venta, comp.numero)}</div>
