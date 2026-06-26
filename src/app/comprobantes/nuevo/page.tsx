@@ -649,7 +649,7 @@ function NuevoComprobanteInner() {
 
   // items
   const [items, setItems] = useState<ItemRow[]>([
-    { codigo: '', detalle: '', cantidad: '1', precio: '' },
+    { codigo: '', detalle: '', cantidad: '1', precio: '', precioManual: false },
   ])
   const [tabItems, setTabItems] = useState<'items' | 'adicional'>('items')
   const [descPct, setDescPct] = useState('0')
@@ -733,9 +733,9 @@ function NuevoComprobanteInner() {
 
   // helpers items
   const setItem = (i: number, k: keyof ItemRow, v: string) =>
-    setItems(a => a.map((it, j) => j === i ? { ...it, [k]: v } : it))
+    setItems(a => a.map((it, j) => j === i ? { ...it, [k]: v, ...(k === 'precio' ? { precioManual: true } : {}) } : it))
 
-  const addItem = () => setItems(a => [...a, { codigo: '', detalle: '', cantidad: '1', precio: '' }])
+  const addItem = () => setItems(a => [...a, { codigo: '', detalle: '', cantidad: '1', precio: '', precioManual: false }])
   const delItem = (i: number) => setItems(a => a.filter((_, j) => j !== i))
 
   const precioConLista = useCallback((m: Material, lista: 1|2|3|null) => {
@@ -766,6 +766,7 @@ function NuevoComprobanteInner() {
         const precio = Math.round((v ? base * (1 + recargoGenPct / 100) : base) * 100) / 100
         return { ...it, precio: String(precio) }
       }
+      if (it.precioManual) return it
       const m = materiales.find(x => x.nombre === it.detalle)
       if (!m) return it
       const base = Number(m.precio_ref || 0)
@@ -787,11 +788,11 @@ function NuevoComprobanteInner() {
 
   const aplicarMat = (i: number, m: Material) => {
     const lista = items[i]?.lista !== undefined ? items[i].lista : listaGlobal
-    setItems(a => a.map((it, j) => j === i ? { ...it, codigo: m.codigo || '', detalle: m.nombre, precio: String(precioConLista(m, lista ?? null) || '') } : it))
+    setItems(a => a.map((it, j) => j === i ? { ...it, codigo: m.codigo || '', detalle: m.nombre, precio: String(precioConLista(m, lista ?? null) || ''), precioManual: false } : it))
   }
 
   const avanzar = (i: number) => {
-    setItems(a => i >= a.length - 1 ? [...a, { codigo: '', detalle: '', cantidad: '1', precio: '' }] : a)
+    setItems(a => i >= a.length - 1 ? [...a, { codigo: '', detalle: '', cantidad: '1', precio: '', precioManual: false }] : a)
     setFocusNext(i + 1)
   }
 
@@ -813,8 +814,8 @@ function NuevoComprobanteInner() {
     setItems(a => {
       const copy = [...a]
       const m0 = elegidos[0]
-      copy[picker.idx] = { ...copy[picker.idx], codigo: m0.codigo || '', detalle: m0.nombre, precio: String(precioConLista(m0, listaGlobal) || '') }
-      const extra = elegidos.slice(1).map(m => ({ codigo: m.codigo || '', detalle: m.nombre, cantidad: '1', precio: String(precioConLista(m, listaGlobal) || '') }))
+      copy[picker.idx] = { ...copy[picker.idx], codigo: m0.codigo || '', detalle: m0.nombre, precio: String(precioConLista(m0, listaGlobal) || ''), precioManual: false }
+      const extra = elegidos.slice(1).map(m => ({ codigo: m.codigo || '', detalle: m.nombre, cantidad: '1', precio: String(precioConLista(m, listaGlobal) || ''), precioManual: false }))
       copy.splice(picker.idx + 1, 0, ...extra)
       ultimo = picker.idx + extra.length
       copy.push({ codigo: '', detalle: '', cantidad: '1', precio: '' })
