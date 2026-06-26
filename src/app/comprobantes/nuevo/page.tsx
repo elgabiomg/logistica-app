@@ -26,7 +26,7 @@ const TIPOS: Record<TipoComprobante, { label: string; letra: string; leyenda: st
   nota_credito: { label: 'Nota de Crédito', letra: 'NC', leyenda: 'Documento no válido como factura' },
 }
 
-interface ItemRow { codigo: string; detalle: string; cantidad: string; precio: string }
+interface ItemRow { codigo: string; detalle: string; cantidad: string; precio: string; precioManual?: boolean }
 
 function imprimirComp(comp: any, empresa: EmpresaConfig | null) {
   const t = TIPOS[comp.tipo as TipoComprobante]
@@ -145,7 +145,7 @@ export default function NuevoComprobantePage() {
 
   // items
   const [items, setItems] = useState<ItemRow[]>([
-    { codigo: '', detalle: '', cantidad: '1', precio: '' },
+    { codigo: '', detalle: '', cantidad: '1', precio: '', precioManual: false },
   ])
   const [tabItems, setTabItems] = useState<'items' | 'adicional'>('items')
   const [descPct, setDescPct] = useState('0')
@@ -199,9 +199,9 @@ export default function NuevoComprobantePage() {
 
   // helpers items
   const setItem = (i: number, k: keyof ItemRow, v: string) =>
-    setItems(a => a.map((it, j) => j === i ? { ...it, [k]: v } : it))
+    setItems(a => a.map((it, j) => j === i ? { ...it, [k]: v, ...(k === 'precio' ? { precioManual: true } : {}) } : it))
 
-  const addItem = () => setItems(a => [...a, { codigo: '', detalle: '', cantidad: '1', precio: '' }])
+  const addItem = () => setItems(a => [...a, { codigo: '', detalle: '', cantidad: '1', precio: '', precioManual: false }])
   const delItem = (i: number) => setItems(a => a.filter((_, j) => j !== i))
 
   const precioCon = useCallback((m: Material, on = recOn) => {
@@ -212,10 +212,10 @@ export default function NuevoComprobantePage() {
   }, [recOn, recGen])
 
   const aplicarMat = (i: number, m: Material) =>
-    setItems(a => a.map((it, j) => j === i ? { ...it, codigo: m.codigo || '', detalle: m.nombre, precio: String(precioCon(m)) } : it))
+    setItems(a => a.map((it, j) => j === i ? { ...it, codigo: m.codigo || '', detalle: m.nombre, precio: String(precioCon(m)), precioManual: false } : it))
 
   const avanzar = (i: number) => {
-    setItems(a => i >= a.length - 1 ? [...a, { codigo: '', detalle: '', cantidad: '1', precio: '' }] : a)
+    setItems(a => i >= a.length - 1 ? [...a, { codigo: '', detalle: '', cantidad: '1', precio: '', precioManual: false }] : a)
     setFocusNext(i + 1)
   }
 
@@ -239,8 +239,8 @@ export default function NuevoComprobantePage() {
     setItems(a => {
       const copy = [...a]
       const m0 = elegidos[0]
-      copy[picker.idx] = { ...copy[picker.idx], codigo: m0.codigo || '', detalle: m0.nombre, precio: String(precioCon(m0)) }
-      const extra = elegidos.slice(1).map(m => ({ codigo: m.codigo || '', detalle: m.nombre, cantidad: '1', precio: String(precioCon(m)) }))
+      copy[picker.idx] = { ...copy[picker.idx], codigo: m0.codigo || '', detalle: m0.nombre, precio: String(precioCon(m0)), precioManual: false }
+      const extra = elegidos.slice(1).map(m => ({ codigo: m.codigo || '', detalle: m.nombre, cantidad: '1', precio: String(precioCon(m)), precioManual: false }))
       copy.splice(picker.idx + 1, 0, ...extra)
       ultimo = picker.idx + extra.length
       copy.push({ codigo: '', detalle: '', cantidad: '1', precio: '' })
@@ -253,6 +253,7 @@ export default function NuevoComprobantePage() {
     setRecOn(on)
     try { localStorage.setItem('logiobra_recargo', on ? '1' : '0') } catch { }
     setItems(a => a.map(it => {
+      if (it.precioManual) return it
       const m = materiales.find(x => x.nombre === it.detalle)
       return m ? { ...it, precio: String(precioCon(m, on)) } : it
     }))
