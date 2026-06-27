@@ -29,6 +29,7 @@ export interface Material {
   id: string; nombre: string; unidad: string; precio_ref?: number
   proveedor_id?: string; proveedores?: Proveedor; notas?: string; activo: boolean
   codigo?: string; rubro?: string; stock?: number; costo?: number; ext_id?: number; recargo?: number
+  lista1_pct?: number; lista2_pct?: number; lista3_pct?: number
 }
 export interface PedidoItem {
   id: string; pedido_id: string; material_id: string; cantidad: number
@@ -121,10 +122,19 @@ export const updatePedido = async (id: string, updates: {
 }
 
 export const getMateriales = async () => {
-  const { data, error } = await getClient()
-    .from('materiales').select('*, proveedores(*)').eq('activo', true).order('nombre')
-  if (error) throw error
-  return data as (Material & { proveedores: Proveedor })[]
+  const PAGE = 1000
+  let all: any[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await getClient()
+      .from('materiales').select('*, proveedores(*)').eq('activo', true).order('nombre').range(from, from + PAGE - 1)
+    if (error) throw error
+    if (!data || data.length === 0) break
+    all = all.concat(data)
+    if (data.length < PAGE) break
+    from += PAGE
+  }
+  return all as (Material & { proveedores: Proveedor })[]
 }
 
 export const createMaterial = async (m: Partial<Material>) => {
@@ -234,8 +244,12 @@ const normalizarDesc = (s: string): string =>
 export const saveListaPrecios = async (
   proveedorId: string,
   nombre: string,
-  items: Array<{ material_id?: string | null; descripcion_original: string; precio: number; unidad?: string }>
+  items: Array<{ material_id?: string | null; descripcion_original: string; precio: number; unidad?: string }>,
+  incluyeIva: boolean = true
 ): Promise<ListaPrecios> => {
+  // Si los precios de la lista son sin IVA, agregar IVA 21% para que precio_ref siempre sea con IVA
+  const conIva = (p: number) => incluyeIva ? p : Math.round(p * 1.21 * 100) / 100
+  items = items.map(i => ({ ...i, precio: conIva(i.precio) }))
   const c = getClient()
 
   // ¿Ya existe una lista activa para este proveedor?
@@ -370,6 +384,12 @@ export interface EmpresaConfig {
   telefono?: string; email?: string; logo_url?: string; punto_venta?: number; pie_comprobante?: string
   recargo_general?: number; descuento_general?: number
   descuento_contado_nombre?: string; descuento_contado_pct?: number
+  fin_debito_recargo_pct?: number
+  fin_visa_3csi_desc_pct?: number; fin_visa_9_coef?: number; fin_visa_12_coef?: number
+  fin_nx_8_coef?: number; fin_nx_10_coef?: number; fin_nx_12_coef?: number
+  lista1_nombre?: string; lista1_pct?: number
+  lista2_nombre?: string; lista2_pct?: number
+  lista3_nombre?: string; lista3_pct?: number
 }
 export interface Cliente {
   id: string; nombre: string; direccion?: string; localidad?: string; provincia?: string; cp?: string

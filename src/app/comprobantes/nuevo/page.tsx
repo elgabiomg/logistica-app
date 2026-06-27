@@ -740,7 +740,8 @@ function NuevoComprobanteInner() {
 
   const precioConLista = useCallback((m: Material, lista: 1|2|3|null) => {
     const base = Number(m.precio_ref || 0)
-    const pct = lista ? listasPct[lista] : null
+    const pctMat = lista === 1 ? m.lista1_pct : lista === 2 ? m.lista2_pct : lista === 3 ? m.lista3_pct : null
+    const pct = pctMat ?? (lista ? listasPct[lista] : null)
     const conLista = pct != null ? base * (1 + pct / 100) : base
     const conRecargo = recargoOn ? conLista * (1 + recargoGenPct / 100) : conLista
     return Math.round(conRecargo * 100) / 100
