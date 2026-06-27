@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect, useCallback, useRef } from 'react'
 
 // ─── STORE GLOBAL DE ESCANEOS (persiste aunque el componente se desmonte) ─────
-type ScanState = { status:'loading'|'done'|'error'; items?:any[]; msg?:string; nombre:string; truncated?:boolean }
+type ScanState = { status:'loading'|'done'|'error'; items?:any[]; msg?:string; nombre:string; truncated?:boolean; incluyeIva?:boolean|null }
 const _scanMap = new Map<string, ScanState>()
 const _scanCbs = new Set<()=>void>()
 const setScan = (id:string, s:ScanState) => { _scanMap.set(id,s); _scanCbs.forEach(f=>f()) }
@@ -1017,6 +1017,7 @@ function ProveedorDetail({proveedor,materiales,onClose,onRefresh}:{
   const [scanning,setScanning]=useState(false)
   const [saving,setSaving]=useState(false)
   const [truncated,setTruncated]=useState(false)
+  const [incluyeIva,setIncluyeIva]=useState<boolean|null>(null)
   const [msg,setMsg]=useState<{text:string;ok:boolean}|null>(null)
   const set=(k:string,v:string)=>setForm(f=>({...f,[k]:v}))
   const scans=useScanStore()
@@ -1048,7 +1049,9 @@ function ProveedorDetail({proveedor,materiales,onClose,onRefresh}:{
         setScanning(false)
         setParsedItems(scan.items)
         setTruncated(!!scan.truncated)
-        setMsg({text:`✅ ${scan.items.length} productos cargados — revisá y guardá`,ok:true})
+        if(scan.incluyeIva!=null) setIncluyeIva(scan.incluyeIva)
+        const ivaMsg = scan.incluyeIva===true ? ' (precios con IVA)' : scan.incluyeIva===false ? ' (precios sin IVA — se sumará 21%)' : ''
+        setMsg({text:`✅ ${scan.items.length} productos cargados${ivaMsg} — revisá y guardá`,ok:true})
         clearScan(proveedor.id)
       } else if(scan.status==='error'){
         setScanning(false)
@@ -1111,12 +1114,14 @@ function ProveedorDetail({proveedor,materiales,onClose,onRefresh}:{
       let desdePagina:number|undefined=undefined
       let nextContinue:string|undefined=continueAfter
       let vueltas=0
+      let ivaDetectado:boolean|null=null
 
       while(vueltas<20){ // tope de seguridad
         vueltas++
         const data=await fetchChunk(file,{continueAfter:nextContinue,desdePagina})
         const nuevos=data.items||[]
         acumulados=mergeItems(acumulados,nuevos)
+        if(ivaDetectado===null && data.incluyeIva!=null) ivaDetectado=data.incluyeIva
 
         // Progreso visible mientras carga en segundo plano
         const pag=data.pagina
@@ -1141,6 +1146,7 @@ function ProveedorDetail({proveedor,materiales,onClose,onRefresh}:{
 
       setScan(proveedor.id,{status:'done',items:acumulados,
         nombre:proveedor.nombre,truncated:false,
+        incluyeIva: ivaDetectado,
         msg:` · ✅ ${acumulados.length} productos en total`})
     })().catch((e:any)=>setScan(proveedor.id,{status:'error',msg:e.message,nombre:proveedor.nombre}))
   },[proveedor.id,fetchChunk])
@@ -1162,17 +1168,14 @@ function ProveedorDetail({proveedor,materiales,onClose,onRefresh}:{
     setSaving(true); setMsg(null)
     try {
       const nombre=`Lista ${new Date().toLocaleDateString('es-AR')}`
-      await saveListaPrecios(proveedor.id,nombre,parsedItems.map(i=>{
-        const base=parseArgPrecio(String(i.precio))||0
-        const iva=parseFloat(i.iva)||0
-        const precioFinal=base*(1+iva)
-        return {
-          material_id:i.material_id||null,
-          descripcion_original:`${i.descripcion_original}${iva>0?` (+IVA ${iva*100}%)`:''}`,
-          precio:parseFloat(precioFinal.toFixed(2)),
-          unidad:i.unidad||undefined
-        }
-      }))
+      // incluyeIva: null = no detectado → tratar como sin IVA por defecto (igual que la lista histórica)
+      const listaConIva = incluyeIva === true
+      await saveListaPrecios(proveedor.id,nombre,parsedItems.map(i=>({
+        material_id:i.material_id||null,
+        descripcion_original:i.descripcion_original,
+        precio:parseFloat(String(i.precio))||0,
+        unidad:i.unidad||undefined
+      })), listaConIva)
       const l=await getListaPrecios(proveedor.id); setLista(l)
       setParsedItems(null); onRefresh()
       setMsg({text:'Lista de precios guardada y precios actualizados',ok:true})
@@ -1804,7 +1807,7 @@ function ClientesView({clientes,empresa,onRefresh}:{clientes:Cliente[];empresa:E
 }
 
 // ─── COMPROBANTES VIEW ──────────────────────────────────────────────────────
-type CompItemForm = {codigo:string;detalle:string;cantidad:string;precio:string}
+type CompItemForm = {codigo:string;detalle:string;cantidad:string;precio:string;lista?:1|2|3|null}
 type PrefillComp = {tipo:TipoComprobante;clienteId:string;clienteLibre:string;items:CompItemForm[];descPct:string;percep:string;obs:string}
 function ComprobanteForm({clientes,vendedores,materiales,empresa,onSaved,onClose,inicial}:{
   clientes:Cliente[];vendedores:Vendedor[];materiales:any[];empresa:EmpresaConfig|null;onSaved:()=>void;onClose:()=>void;inicial?:PrefillComp}){
@@ -1830,13 +1833,14 @@ function ComprobanteForm({clientes,vendedores,materiales,empresa,onSaved,onClose
   const addItem=()=>setItems(a=>[...a,{codigo:'',detalle:'',cantidad:'1',precio:''}])
   const delItem=(i:number)=>setItems(a=>a.filter((_,j)=>j!==i))
   // Recargo: general (config) + por artículo (override). Toggle persistido por dispositivo.
-  const recGen = empresa?.recargo_general ?? 47.04
-  const [recOn,setRecOn]=useState<boolean>(()=>{ try{return localStorage.getItem('logiobra_recargo')==='1'}catch{return false} })
-  const recDe=(m:any)=> (m?.recargo!=null?Number(m.recargo):recGen)
-  const precioCon=(m:any, on=recOn)=>{ const base=Number(m?.precio_ref||0); const p= on? base*(1+recDe(m)/100) : base; return Math.round(p*100)/100 }
-  const aplicarMat=(i:number,m:any)=>setItems(a=>a.map((it,j)=>j===i?{...it,codigo:m.codigo||'',detalle:m.nombre,precio:String(precioCon(m))}:it))
-  const toggleRec=(on:boolean)=>{ setRecOn(on); try{localStorage.setItem('logiobra_recargo',on?'1':'0')}catch{}
-    setItems(a=>a.map(it=>{ const m=materiales.find((x:any)=>x.nombre===it.detalle); return m?{...it,precio:String(precioCon(m,on))}:it })) }
+  const [listaGlobal,setListaGlobal]=useState<1|2|3|null>(()=>{ try{const v=localStorage.getItem('logiobra_lista'); return v!==null&&v!==''?Number(v) as 1|2|3:1}catch{return 1} })
+  const listaNombres=['Sin lista',empresa?.lista1_nombre||'Lista 1',empresa?.lista2_nombre||'Lista 2',empresa?.lista3_nombre||'Lista 3']
+  const listasPct=[null,empresa?.lista1_pct??20,empresa?.lista2_pct??15,empresa?.lista3_pct??10]
+  const precioConLista=(m:any, lista:1|2|3|null)=>{ const base=Number(m?.precio_ref||0); if(!base) return 0; const pct=lista?listasPct[lista]:null; return pct!=null?Math.round(base*(1+pct/100)*100)/100:base }
+  const aplicarMat=(i:number,m:any)=>{ const lista=items[i]?.lista!==undefined?items[i].lista:listaGlobal; setItems(a=>a.map((it,j)=>j===i?{...it,codigo:m.codigo||'',detalle:m.nombre,precio:String(precioConLista(m,lista??null)||'')}:it)) }
+  const cambiarListaGlobal=(v:1|2|3|null)=>{ setListaGlobal(v); try{localStorage.setItem('logiobra_lista',v?String(v):'')}catch{}
+    setItems(a=>a.map(it=>{ if(it.lista!==undefined&&it.lista!==null) return it; const m=materiales.find((x:any)=>x.nombre===it.detalle); return m?{...it,precio:String(precioConLista(m,v)||it.precio)}:it })) }
+  const cambiarListaItem=(i:number,v:1|2|3|null)=>{ const m=materiales.find((x:any)=>x.nombre===items[i]?.detalle); setItems(a=>a.map((it,j)=>{ if(j!==i) return it; const precio=m?String(precioConLista(m,v))||it.precio:it.precio; return {...it,lista:v,precio} })) }
   const elegirMaterial=(i:number,mid:string)=>{ const m=materiales.find(x=>x.id===mid); if(m) aplicarMat(i,m) }
   // Buscar por código/descripción + Enter
   const [picker,setPicker]=useState<{idx:number;matches:any[]}|null>(null)
@@ -1865,8 +1869,8 @@ function ComprobanteForm({clientes,vendedores,materiales,empresa,onSaved,onClose
     setItems(a=>{
       const copy=[...a]
       const m0=elegidos[0]
-      copy[picker.idx]={...copy[picker.idx],codigo:m0.codigo||'',detalle:m0.nombre,precio:String(precioCon(m0))}
-      const extra=elegidos.slice(1).map((m:any)=>({codigo:m.codigo||'',detalle:m.nombre,cantidad:'1',precio:String(precioCon(m))}))
+      copy[picker.idx]={...copy[picker.idx],codigo:m0.codigo||'',detalle:m0.nombre,precio:String(precioConLista(m0,listaGlobal)||'')}
+      const extra=elegidos.slice(1).map((m:any)=>({codigo:m.codigo||'',detalle:m.nombre,cantidad:'1',precio:String(precioConLista(m,listaGlobal)||'')}))
       copy.splice(picker.idx+1,0,...extra)
       ultimo=picker.idx+extra.length
       // fila vacía al final para seguir cargando
@@ -1974,43 +1978,66 @@ function ComprobanteForm({clientes,vendedores,materiales,empresa,onSaved,onClose
     <div style={{borderTop:`1px solid ${C.border}`,paddingTop:12}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8,flexWrap:'wrap',gap:8}}>
         <span style={{color:C.textMuted,fontSize:12,fontWeight:700,letterSpacing:0.5}}>ÍTEMS ({items.filter(it=>it.detalle&&num(it.cantidad)>0).length})</span>
-        <div style={{display:'flex',gap:8,alignItems:'center'}}>
-          <label title="Aplica el recargo al precio de cada producto cargado"
-            style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',background:recOn?C.accentDim:C.surfaceAlt,
-              border:`1px solid ${recOn?C.accent:C.border}`,borderRadius:7,padding:'5px 9px'}}>
-            <input type="checkbox" checked={recOn} onChange={e=>toggleRec(e.target.checked)} style={{width:15,height:15}}/>
-            <span style={{color:recOn?C.accent:C.textMuted,fontSize:12,fontWeight:700}}>Recargo {recGen.toString().replace('.',',')}%</span>
-          </label>
+        <div style={{display:'flex',gap:6,alignItems:'center'}}>
+          {/* Selector global de lista de precios */}
+          {([null,1,2,3] as (1|2|3|null)[]).map(v=>{
+            const activa=listaGlobal===v
+            const colores=v?[C.accent,C.accentDim,'#a78bfa','#7c3aed','#34d399','#065f46'][v*2-1]:C.textMuted
+            const bg=v?[C.accentDim,'#4c1d95','#d1fae5'][v-1]:C.surfaceAlt
+            return <button key={String(v)} onClick={()=>cambiarListaGlobal(v)}
+              style={{background:activa?bg:C.surfaceAlt,border:`1px solid ${activa?colores:C.border}`,
+                borderRadius:7,padding:'5px 9px',cursor:'pointer',color:activa?colores:C.textDim,fontSize:11,fontWeight:700,transition:'all .15s'}}>
+              {v?`L${v} ${listasPct[v]}%`:'Sin lista'}
+            </button>
+          })}
           <Btn onClick={addItem} variant="secondary" size="sm">+ Ítem</Btn>
         </div>
       </div>
-      {items.map((it,i)=><div key={i} style={{marginBottom:10,background:C.surfaceAlt,borderRadius:8,padding:10}}>
-        <select value="" onChange={e=>elegirMaterial(i,e.target.value)}
-          style={{width:'100%',background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:'6px 8px',color:C.textMuted,fontSize:12,marginBottom:6,outline:'none'}}>
-          <option value="">🔍 Elegir del catálogo (o escribir abajo)...</option>
-          {materiales.map(m=><option key={m.id} value={m.id}>{m.codigo?`[${m.codigo}] `:''}{m.nombre} — {money(m.precio_ref||0)}</option>)}
-        </select>
-        <div style={{display:'flex',gap:6,marginBottom:6}}>
-          <input value={it.codigo} onChange={e=>setItem(i,'codigo',e.target.value)} placeholder="Código"
-            onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();buscarItem(i,(e.target as HTMLInputElement).value)}}}
-            style={{width:80,background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:'7px 8px',color:C.text,fontSize:12,outline:'none'}}/>
-          <input value={it.detalle} ref={el=>{detalleRefs.current[i]=el}}
-            onChange={e=>{setItem(i,'detalle',e.target.value);if(buscarMsg?.idx===i)setBuscarMsg(null)}} placeholder="Descripción o código + Enter ↵"
-            onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();buscarItem(i,(e.target as HTMLInputElement).value)}}}
-            style={{flex:1,background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:'7px 8px',color:C.text,fontSize:12,outline:'none'}}/>
-          <button onClick={()=>buscarItem(i)} title="Buscar en catálogo" style={{background:C.blueDim,color:C.blue,border:`1px solid ${C.blue}40`,borderRadius:6,padding:'0 10px',cursor:'pointer',fontSize:13}}>🔍</button>
+      {items.map((it,i)=>{
+        const listaEfectiva=it.lista!==undefined&&it.lista!==null?it.lista:listaGlobal
+        const tieneOverride=it.lista!==undefined&&it.lista!==null&&it.lista!==listaGlobal
+        return <div key={i} style={{marginBottom:10,background:C.surfaceAlt,borderRadius:8,padding:10}}>
+          <div style={{display:'flex',gap:6,marginBottom:6,alignItems:'center'}}>
+            <select value="" onChange={e=>elegirMaterial(i,e.target.value)}
+              style={{flex:1,background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:'6px 8px',color:C.textMuted,fontSize:12,outline:'none'}}>
+              <option value="">🔍 Elegir del catálogo...</option>
+              {materiales.map(m=><option key={m.id} value={m.id}>{m.codigo?`[${m.codigo}] `:''}{m.nombre} — {money(m.precio_ref||0)}</option>)}
+            </select>
+            {/* Badge de lista por ítem */}
+            <div style={{display:'flex',gap:3}}>
+              {([null,1,2,3] as (1|2|3|null)[]).map(v=>{
+                const sel=listaEfectiva===v
+                return <button key={String(v)} onClick={()=>cambiarListaItem(i,v)} title={v?`${listaNombres[v]} (${listasPct[v]}%)`:'Precio manual'}
+                  style={{background:sel?(v?C.accentDim:C.surfaceAlt):C.bg,border:`1px solid ${sel?(v?C.accent:C.border):C.border}`,
+                    borderRadius:5,padding:'3px 6px',cursor:'pointer',color:sel?(v?C.accent:C.textMuted):C.textDim,fontSize:10,fontWeight:700,
+                    opacity:tieneOverride&&v===listaGlobal?0.4:1}}>
+                  {v?`L${v}`:'—'}
+                </button>
+              })}
+            </div>
+          </div>
+          <div style={{display:'flex',gap:6,marginBottom:6}}>
+            <input value={it.codigo} onChange={e=>setItem(i,'codigo',e.target.value)} placeholder="Código"
+              onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();buscarItem(i,(e.target as HTMLInputElement).value)}}}
+              style={{width:80,background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:'7px 8px',color:C.text,fontSize:12,outline:'none'}}/>
+            <input value={it.detalle} ref={el=>{detalleRefs.current[i]=el}}
+              onChange={e=>{setItem(i,'detalle',e.target.value);if(buscarMsg?.idx===i)setBuscarMsg(null)}} placeholder="Descripción o código + Enter ↵"
+              onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();buscarItem(i,(e.target as HTMLInputElement).value)}}}
+              style={{flex:1,background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:'7px 8px',color:C.text,fontSize:12,outline:'none'}}/>
+            <button onClick={()=>buscarItem(i)} title="Buscar en catálogo" style={{background:C.blueDim,color:C.blue,border:`1px solid ${C.blue}40`,borderRadius:6,padding:'0 10px',cursor:'pointer',fontSize:13}}>🔍</button>
+          </div>
+          {buscarMsg?.idx===i&&<div style={{color:C.accent,fontSize:11,marginBottom:6}}>⚠️ {buscarMsg.txt}</div>}
+          <div style={{display:'flex',gap:6,alignItems:'center'}}>
+            <input value={it.cantidad} onChange={e=>setItem(i,'cantidad',e.target.value)} type="number" placeholder="Cant."
+              style={{width:64,background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:'7px 8px',color:C.text,fontSize:12,outline:'none',textAlign:'center'}}/>
+            <span style={{color:C.textDim}}>×</span>
+            <input value={it.precio} onChange={e=>setItem(i,'precio',e.target.value)} type="number" placeholder="P.Unit."
+              style={{width:90,background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:'7px 8px',color:C.accent,fontSize:12,fontWeight:700,outline:'none',textAlign:'right'}}/>
+            <span style={{flex:1,textAlign:'right',color:C.text,fontWeight:700,fontFamily:"'Space Mono',monospace",fontSize:13}}>{money(num(it.cantidad)*num(it.precio))}</span>
+            {items.length>1&&<button onClick={()=>delItem(i)} style={{background:C.redDim,color:C.red,border:'none',borderRadius:6,padding:'4px 8px',cursor:'pointer'}}>✕</button>}
+          </div>
         </div>
-        {buscarMsg?.idx===i&&<div style={{color:C.accent,fontSize:11,marginBottom:6}}>⚠️ {buscarMsg.txt}</div>}
-        <div style={{display:'flex',gap:6,alignItems:'center'}}>
-          <input value={it.cantidad} onChange={e=>setItem(i,'cantidad',e.target.value)} type="number" placeholder="Cant."
-            style={{width:64,background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:'7px 8px',color:C.text,fontSize:12,outline:'none',textAlign:'center'}}/>
-          <span style={{color:C.textDim}}>×</span>
-          <input value={it.precio} onChange={e=>setItem(i,'precio',e.target.value)} type="number" placeholder="P.Unit."
-            style={{width:90,background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:'7px 8px',color:C.accent,fontSize:12,fontWeight:700,outline:'none',textAlign:'right'}}/>
-          <span style={{flex:1,textAlign:'right',color:C.text,fontWeight:700,fontFamily:"'Space Mono',monospace",fontSize:13}}>{money(num(it.cantidad)*num(it.precio))}</span>
-          {items.length>1&&<button onClick={()=>delItem(i)} style={{background:C.redDim,color:C.red,border:'none',borderRadius:6,padding:'4px 8px',cursor:'pointer'}}>✕</button>}
-        </div>
-      </div>)}
+      })}
     </div>
 
     <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
@@ -2184,7 +2211,6 @@ function ComprobantesView({clientes,vendedores,materiales,empresa,onRefresh}:{
       <h2 style={{color:C.text,fontSize:20,fontWeight:800}}>Comprobantes</h2>
       <div style={{display:'flex',gap:8}}>
         <Btn onClick={()=>window.location.href='/comprobantes/nuevo'} style={{background:C.accent,color:'#000',fontWeight:800}}>+ Nuevo comprobante</Btn>
-        <Btn onClick={()=>setShow(true)} variant="secondary">+ Rápido</Btn>
       </div>
     </div>
     <div style={{position:'relative',marginBottom:12}}>
@@ -2204,13 +2230,13 @@ function ComprobantesView({clientes,vendedores,materiales,empresa,onRefresh}:{
     {!loading&&<div style={{display:'flex',flexDirection:'column',gap:8}}>
       {filtered.map(c=><div key={c.id} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:'12px 14px'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,flexWrap:'wrap'}}>
-          <div onClick={()=>verDetalle(c)} style={{cursor:'pointer',flex:1,minWidth:0}}>
+          <div onClick={()=>window.location.href=`/comprobantes/nuevo?id=${c.id}`} style={{cursor:'pointer',flex:1,minWidth:0}}>
             <div style={{display:'flex',gap:8,alignItems:'center'}}>
               <span style={{background:C.accentDim,color:C.accent,borderRadius:4,padding:'1px 7px',fontSize:10,fontWeight:700}}>{TIPOS_COMP[c.tipo].label}</span>
               <span style={{color:C.textDim,fontSize:11,fontFamily:"'Space Mono',monospace"}}>{fmtNumComp(c.punto_venta,c.numero)}</span>
             </div>
             <div style={{color:C.text,fontWeight:700,fontSize:14,marginTop:3}}>{c.cliente_nombre||c.clientes?.nombre||'Consumidor Final'}</div>
-            <div style={{color:C.textMuted,fontSize:12}}>📅 {c.fecha} · {c.condicion_pago} · <span style={{color:C.blue}}>ver detalle ›</span></div>
+            <div style={{color:C.textMuted,fontSize:12}}>📅 {c.fecha} · {c.condicion_pago} · <span style={{color:C.blue}}>abrir ›</span></div>
           </div>
           <div style={{textAlign:'right'}}>
             <div style={{color:C.accent,fontWeight:800,fontFamily:"'Space Mono',monospace"}}>{money(c.total)}</div>
@@ -2223,10 +2249,6 @@ function ComprobantesView({clientes,vendedores,materiales,empresa,onRefresh}:{
       </div>)}
       {filtered.length===0&&<div style={{color:C.textMuted,textAlign:'center',padding:40}}>Sin comprobantes</div>}
     </div>}
-    {show&&<Modal onClose={()=>setShow(false)} title="Nuevo Comprobante">
-      <ComprobanteForm clientes={clientes} vendedores={vendedores} materiales={materiales} empresa={empresa}
-        onClose={()=>setShow(false)} onSaved={()=>{setShow(false);cargar();onRefresh()}}/></Modal>}
-
     {detalle&&<Modal onClose={()=>setDetalle(null)} title={`${TIPOS_COMP[detalle.tipo].label} ${fmtNumComp(detalle.punto_venta,detalle.numero)}`}>
       <div style={{display:'flex',flexDirection:'column',gap:12}}>
         <div style={{display:'flex',justifyContent:'space-between',flexWrap:'wrap',gap:8}}>
@@ -2276,9 +2298,9 @@ function ComprobantesView({clientes,vendedores,materiales,empresa,onRefresh}:{
             <span>TOTAL</span><span style={{color:C.accent,fontFamily:"'Space Mono',monospace"}}>{money(detalle.total)}</span></div>
         </div>
 
-        {detalle.tipo==='presupuesto'&&<button onClick={()=>pasarAFactura(detalle)} disabled={loadingDet}
+        {detalle.tipo==='presupuesto'&&<button onClick={()=>window.location.href=`/comprobantes/nuevo?id=${detalle.id}`}
           style={{background:C.green,color:'#000',border:'none',borderRadius:8,padding:'11px',fontSize:14,fontWeight:800,cursor:'pointer',width:'100%'}}>
-          🧾 Pasar a Factura X (efectuar venta)</button>}
+          🧾 Abrir y pasar a Factura X</button>}
 
         {detalle.tipo==='factura_x'&&<div style={{borderTop:`1px solid ${C.border}`,paddingTop:10,display:'flex',flexDirection:'column',gap:8}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -2303,9 +2325,6 @@ function ComprobantesView({clientes,vendedores,materiales,empresa,onRefresh}:{
       </div>
     </Modal>}
 
-    {convertir&&<Modal onClose={()=>setConvertir(null)} title="Pasar presupuesto a Factura X">
-      <ComprobanteForm clientes={clientes} vendedores={vendedores} materiales={materiales} empresa={empresa} inicial={convertir}
-        onClose={()=>setConvertir(null)} onSaved={()=>{setConvertir(null);cargar();onRefresh()}}/></Modal>}
 
     {remitoFactura&&<Modal onClose={()=>setRemitoFactura(null)} title={`Emitir remito · Factura ${fmtNumComp(remitoFactura.punto_venta,remitoFactura.numero)}`}>
       <RemitoForm factura={remitoFactura} empresa={empresa}
@@ -2471,14 +2490,45 @@ function CajaView({clientes,onRefresh}:{clientes:Cliente[];onRefresh:()=>void}){
 
 // ─── NAV ──────────────────────────────────────────────────────────────────────
 // ─── PRODUCTOS (ABM artículos) ────────────────────────────────────────────────
-function ProductosView({materiales,proveedores,onRefresh}:{materiales:any[];proveedores:any[];onRefresh:()=>void}){
+function ProductosView({materiales,proveedores,empresa,onRefresh}:{materiales:any[];proveedores:any[];empresa:EmpresaConfig|null;onRefresh:()=>void}){
+  const lista1Pct = empresa?.lista1_pct ?? 20
+  const lista1Nombre = empresa?.lista1_nombre || 'Lista 1'
+  const precioL1 = (m:any) => { const pct = m.lista1_pct ?? lista1Pct; return Math.round(Number(m.precio_ref||0) * (1 + pct/100) * 100) / 100 }
   const [search,setSearch]=useState('')
   const [sel,setSel]=useState<any>(null)
   const [nuevo,setNuevo]=useState(false)
+  const [checked,setChecked]=useState<Set<string>>(new Set())
+  const [modalAjuste,setModalAjuste]=useState(false)
+  const [ajuste,setAjuste]=useState({l1:'',l2:'',l3:''})
+  const [busy,setBusy]=useState(false)
+
   const filt=materiales.filter((m:any)=>{
     const q=search.toLowerCase()
     return !q || (m.nombre||'').toLowerCase().includes(q) || (m.codigo||'').toLowerCase().includes(q) || (m.rubro||'').toLowerCase().includes(q)
   }).slice(0,300)
+
+  const toggleCheck=(id:string,e:React.MouseEvent)=>{ e.stopPropagation(); setChecked(s=>{ const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n }) }
+  const toggleAll=()=>setChecked(s=>s.size===filt.length?new Set():new Set(filt.map((m:any)=>m.id)))
+  const clearSel=()=>setChecked(new Set())
+
+  const bulkDelete=async()=>{
+    if(!confirm(`¿Eliminar ${checked.size} producto(s)?`))return
+    setBusy(true)
+    await Promise.all([...checked].map(id=>deleteMaterial(id)))
+    setChecked(new Set()); setBusy(false); onRefresh()
+  }
+
+  const bulkAjuste=async()=>{
+    if(!ajuste.l1&&!ajuste.l2&&!ajuste.l3)return
+    setBusy(true)
+    const updates:any={}
+    if(ajuste.l1!=='') updates.lista1_pct=parseFloat(ajuste.l1)
+    if(ajuste.l2!=='') updates.lista2_pct=parseFloat(ajuste.l2)
+    if(ajuste.l3!=='') updates.lista3_pct=parseFloat(ajuste.l3)
+    await Promise.all([...checked].map(id=>updateMaterial(id,updates)))
+    setChecked(new Set()); setModalAjuste(false); setAjuste({l1:'',l2:'',l3:''}); setBusy(false); onRefresh()
+  }
+
   return <div>
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:10}}>
       <h2 style={{color:C.text,fontSize:20,fontWeight:800}}>Productos <span style={{color:C.textDim,fontSize:13,fontWeight:400}}>({materiales.length})</span></h2>
@@ -2486,25 +2536,64 @@ function ProductosView({materiales,proveedores,onRefresh}:{materiales:any[];prov
     </div>
     <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍  Buscar por nombre, código o rubro..."
       style={{width:'100%',background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,padding:'9px 12px',color:C.text,fontSize:14,marginBottom:12,outline:'none'}} />
+
+    {/* Barra de selección múltiple */}
+    {checked.size>0&&<div style={{background:C.accentDim,border:`1px solid ${C.accent}40`,borderRadius:8,padding:'8px 12px',marginBottom:10,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+      <span style={{color:C.accent,fontWeight:700,fontSize:13}}>{checked.size} seleccionado(s)</span>
+      <Btn size="sm" onClick={()=>setModalAjuste(true)}>% Ajustar ganancia</Btn>
+      <Btn size="sm" variant="danger" disabled={busy} onClick={bulkDelete}>🗑️ Eliminar</Btn>
+      <Btn size="sm" variant="ghost" onClick={clearSel}>✕ Cancelar</Btn>
+    </div>}
+
     <div style={{display:'flex',flexDirection:'column',gap:6}}>
-      {filt.map((m:any)=><div key={m.id} onClick={()=>setSel(m)} style={{background:C.surface,border:`1px solid ${C.border}`,
-        borderRadius:9,padding:'10px 14px',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
-        <div style={{minWidth:0}}>
-          <div style={{color:C.text,fontSize:14,fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{m.nombre}</div>
-          <div style={{color:C.textDim,fontSize:11}}>
-            {m.codigo?`#${m.codigo} · `:''}{m.rubro||'sin rubro'}{m.proveedores?.nombre?` · ${m.proveedores.nombre}`:''}</div>
+      {/* Seleccionar todos */}
+      {filt.length>0&&<div style={{display:'flex',alignItems:'center',gap:8,padding:'4px 2px',marginBottom:2}}>
+        <input type="checkbox" checked={checked.size===filt.length&&filt.length>0} onChange={toggleAll} style={{width:15,height:15,cursor:'pointer'}}/>
+        <span style={{color:C.textDim,fontSize:12,cursor:'pointer'}} onClick={toggleAll}>Seleccionar todos ({filt.length})</span>
+      </div>}
+
+      {filt.map((m:any)=><div key={m.id} style={{background:checked.has(m.id)?C.accentDim:C.surface,border:`1px solid ${checked.has(m.id)?C.accent:C.border}`,
+        borderRadius:9,padding:'10px 14px',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}
+        onClick={()=>setSel(m)}>
+        <div style={{display:'flex',alignItems:'center',gap:10,minWidth:0}}>
+          <div onClick={e=>toggleCheck(m.id,e)} style={{flexShrink:0}}>
+            <input type="checkbox" checked={checked.has(m.id)} onChange={()=>{}} style={{width:15,height:15,cursor:'pointer',pointerEvents:'none'}}/>
+          </div>
+          <div style={{minWidth:0}}>
+            <div style={{color:C.text,fontSize:14,fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{m.nombre}</div>
+            <div style={{color:C.textDim,fontSize:11}}>
+              {m.codigo?`#${m.codigo} · `:''}{m.rubro||'sin rubro'}{m.proveedores?.nombre?` · ${m.proveedores.nombre}`:''}
+              {(m.lista1_pct!=null||m.lista2_pct!=null)&&<span style={{color:C.accent,marginLeft:6}}>L1:{m.lista1_pct??lista1Pct}%</span>}
+            </div>
+          </div>
         </div>
         <div style={{textAlign:'right',flexShrink:0}}>
-          <div style={{color:C.accent,fontWeight:700,fontFamily:"'Space Mono',monospace",fontSize:13}}>{money(m.precio_ref||0)}</div>
-          <div style={{color:(m.stock>0?C.green:C.textDim),fontSize:11}}>stock: {m.stock??0} {m.unidad}</div>
+          <div style={{color:C.accent,fontWeight:700,fontFamily:"'Space Mono',monospace",fontSize:13}}>{money(precioL1(m))}</div>
+          <div style={{color:C.textDim,fontSize:10,marginTop:1}}>{lista1Nombre} · costo {money(m.precio_ref||0)} · stock: {m.stock??0} {m.unidad}</div>
         </div>
       </div>)}
       {filt.length===0&&<div style={{color:C.textMuted,textAlign:'center',padding:30}}>Sin resultados</div>}
       {materiales.filter((m:any)=>{const q=search.toLowerCase();return !q||(m.nombre||'').toLowerCase().includes(q)}).length>300&&
         <div style={{color:C.textDim,textAlign:'center',fontSize:12,padding:8}}>Mostrando 300 — afiná la búsqueda para ver más</div>}
     </div>
+
     {(sel||nuevo)&&<Modal onClose={()=>{setSel(null);setNuevo(false)}} title={nuevo?'Nuevo Producto':'Editar Producto'}>
       <ProductoForm prod={sel} proveedores={proveedores} onClose={()=>{setSel(null);setNuevo(false)}} onSaved={()=>{setSel(null);setNuevo(false);onRefresh()}}/>
+    </Modal>}
+
+    {modalAjuste&&<Modal onClose={()=>setModalAjuste(false)} title={`Ajustar ganancia — ${checked.size} producto(s)`}>
+      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+        <p style={{color:C.textMuted,fontSize:13,margin:0}}>Dejá vacío los que no querés cambiar.</p>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
+          <Input label="L1 %" value={ajuste.l1} onChange={(v:string)=>setAjuste(a=>({...a,l1:v}))} type="number" placeholder="ej: 30"/>
+          <Input label="L2 %" value={ajuste.l2} onChange={(v:string)=>setAjuste(a=>({...a,l2:v}))} type="number" placeholder="ej: 25"/>
+          <Input label="L3 %" value={ajuste.l3} onChange={(v:string)=>setAjuste(a=>({...a,l3:v}))} type="number" placeholder="ej: 20"/>
+        </div>
+        <div style={{display:'flex',gap:10}}>
+          <Btn variant="secondary" onClick={()=>setModalAjuste(false)} style={{flex:1}}>Cancelar</Btn>
+          <Btn onClick={bulkAjuste} disabled={busy||(!ajuste.l1&&!ajuste.l2&&!ajuste.l3)} style={{flex:2}}>{busy?'Guardando...':'💾 Aplicar a seleccionados'}</Btn>
+        </div>
+      </div>
     </Modal>}
   </div>
 }
@@ -2531,9 +2620,8 @@ function ProductoForm({prod,proveedores,onClose,onSaved}:{prod:any;proveedores:a
       <Input label="Código" value={f.codigo} onChange={(v:string)=>set('codigo',v)}/>
       <Input label="Unidad" value={f.unidad} onChange={(v:string)=>set('unidad',v)}/>
     </div>
-    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
-      <Input label="Precio" value={f.precio_ref} onChange={(v:string)=>set('precio_ref',v)} type="number"/>
-      <Input label="Costo" value={f.costo} onChange={(v:string)=>set('costo',v)} type="number"/>
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+      <Input label="Costo mayorista (c/IVA)" value={f.precio_ref} onChange={(v:string)=>set('precio_ref',v)} type="number"/>
       <Input label="Stock" value={f.stock} onChange={(v:string)=>set('stock',v)} type="number"/>
     </div>
     <Input label="Recargo % (opcional — vacío usa el general)" value={f.recargo} onChange={(v:string)=>set('recargo',v)} type="number" placeholder="ej: 47.04"/>
@@ -2636,8 +2724,15 @@ function ConfigView({empresa,onRefresh}:{empresa:EmpresaConfig|null;onRefresh:()
     nombre:e.nombre||'',cuit:e.cuit||'',iibb:e.iibb||'',condicion_iva:e.condicion_iva||'Responsable Inscripto',
     inicio_actividad:e.inicio_actividad||'',direccion:e.direccion||'',localidad:e.localidad||'',provincia:e.provincia||'',
     cp:e.cp||'',telefono:e.telefono||'',email:e.email||'',punto_venta:String(e.punto_venta??1),
+    lista1_nombre:e.lista1_nombre||'Lista 1',lista1_pct:String(e.lista1_pct??20),
+    lista2_nombre:e.lista2_nombre||'Lista 2',lista2_pct:String(e.lista2_pct??15),
+    lista3_nombre:e.lista3_nombre||'Lista 3',lista3_pct:String(e.lista3_pct??10),
     recargo_general:String(e.recargo_general??47.04),descuento_general:String(e.descuento_general??0),
     descuento_contado_nombre:e.descuento_contado_nombre||'Descuento contado',descuento_contado_pct:String(e.descuento_contado_pct??32),
+    fin_debito_recargo_pct:String(e.fin_debito_recargo_pct??5),
+    fin_visa_3csi_desc_pct:String(e.fin_visa_3csi_desc_pct??10),
+    fin_visa_9_coef:String(e.fin_visa_9_coef??149),fin_visa_12_coef:String(e.fin_visa_12_coef??165),
+    fin_nx_8_coef:String(e.fin_nx_8_coef??149),fin_nx_10_coef:String(e.fin_nx_10_coef??152),fin_nx_12_coef:String(e.fin_nx_12_coef??165),
     logo_url:e.logo_url||'',pie_comprobante:e.pie_comprobante||''})
   const [saving,setSaving]=useState(false);const [msg,setMsg]=useState('')
   const logoRef=useRef<HTMLInputElement>(null)
@@ -2660,13 +2755,36 @@ function ConfigView({empresa,onRefresh}:{empresa:EmpresaConfig|null;onRefresh:()
   const guardar=async()=>{
     setSaving(true);setMsg('')
     try{
-      await updateEmpresa({...f, punto_venta:parseInt(f.punto_venta)||1, recargo_general:parseFloat(String(f.recargo_general).replace(',','.'))||0, descuento_general:parseFloat(String(f.descuento_general).replace(',','.'))||0, descuento_contado_pct:parseFloat(String(f.descuento_contado_pct).replace(',','.'))||0})
+      const pf=(k:string)=>parseFloat(String(f[k]).replace(',','.'))||0
+      await updateEmpresa({...f, punto_venta:parseInt(f.punto_venta)||1,
+        lista1_pct:pf('lista1_pct'), lista2_pct:pf('lista2_pct'), lista3_pct:pf('lista3_pct'),
+        recargo_general:pf('recargo_general'), descuento_general:pf('descuento_general'), descuento_contado_pct:pf('descuento_contado_pct'),
+        fin_debito_recargo_pct:pf('fin_debito_recargo_pct'), fin_visa_3csi_desc_pct:pf('fin_visa_3csi_desc_pct'),
+        fin_visa_9_coef:pf('fin_visa_9_coef'), fin_visa_12_coef:pf('fin_visa_12_coef'),
+        fin_nx_8_coef:pf('fin_nx_8_coef'), fin_nx_10_coef:pf('fin_nx_10_coef'), fin_nx_12_coef:pf('fin_nx_12_coef')})
       onRefresh(); setMsg('✅ Configuración guardada')
     }catch(err:any){setMsg('⚠️ '+(err.message||'Error'))}
     finally{setSaving(false)}
   }
   return <div>
     <h2 style={{color:C.text,fontSize:20,fontWeight:800,marginBottom:14}}>Configuración</h2>
+
+    <div style={{background:`linear-gradient(135deg,${C.accentDim}55,${C.surfaceAlt})`,border:`1px solid ${C.accent}30`,borderRadius:12,padding:'14px 16px',marginBottom:18}}>
+      <label style={{color:C.accent,fontSize:12,fontWeight:700,letterSpacing:0.5,display:'block',marginBottom:10}}>LISTAS DE PRECIOS DE VENTA</label>
+      <div style={{color:C.textDim,fontSize:11,marginBottom:10}}>Cada lista calcula el precio de venta como: <b>Costo × (1 + %)</b>. Se elige al armar el comprobante por artículo o globalmente.</div>
+      {([1,2,3] as (1|2|3)[]).map(n=>{
+        const colors=['#f59e0b','#a78bfa','#34d399']
+        const c=colors[n-1]
+        return <div key={n} style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+          <span style={{color:c,fontWeight:800,fontSize:13,width:12}}>L{n}</span>
+          <input value={f[`lista${n}_nombre`]} onChange={e=>set(`lista${n}_nombre`,e.target.value)} placeholder={`Lista ${n}`}
+            style={{flex:1,background:C.bg,border:`1px solid ${c}55`,borderRadius:7,padding:'8px 10px',color:C.text,fontSize:13,fontWeight:600,outline:'none'}}/>
+          <input value={f[`lista${n}_pct`]} onChange={e=>set(`lista${n}_pct`,e.target.value)} type="number" step="0.01"
+            style={{width:80,background:C.bg,border:`1px solid ${c}55`,borderRadius:7,padding:'8px 10px',color:c,fontSize:16,fontWeight:800,outline:'none',textAlign:'right'}}/>
+          <span style={{color:C.textMuted,fontSize:13}}>%</span>
+        </div>
+      })}
+    </div>
 
     <div style={{background:`linear-gradient(135deg,${C.accentDim},${C.surfaceAlt})`,border:`1px solid ${C.accent}40`,borderRadius:12,padding:'14px 16px',marginBottom:18}}>
       <label style={{color:C.accent,fontSize:12,fontWeight:700,letterSpacing:0.5}}>RECARGO GENERAL (%)</label>
@@ -2691,7 +2809,43 @@ function ConfigView({empresa,onRefresh}:{empresa:EmpresaConfig|null;onRefresh:()
             style={{width:100,background:C.bg,border:`1px solid ${C.blue}55`,borderRadius:8,padding:'10px 12px',color:C.blue,fontSize:18,fontWeight:800,outline:'none',textAlign:'right'}}/>
           <span style={{color:C.textMuted,fontSize:13}}>%</span>
         </div>
-        <div style={{color:C.textDim,fontSize:11,marginTop:6}}>Nombre y porcentaje del toggle de descuento rápido en la página de comprobantes</div>
+        <div style={{color:C.textDim,fontSize:11,marginTop:6}}>Nombre y porcentaje del toggle de descuento rápido en la página de comprobantes. Este mismo % se usa para calcular los precios efectivo en el presupuesto.</div>
+      </div>
+      <div style={{borderTop:`1px solid ${C.border}`,marginTop:14,paddingTop:14}}>
+        <label style={{color:'#a78bfa',fontSize:12,fontWeight:700,letterSpacing:0.5,display:'block',marginBottom:10}}>FINANCIACIÓN — COEFICIENTES (presupuesto PDF / imagen / WhatsApp)</label>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+          <div>
+            <div style={{color:C.textMuted,fontSize:11,marginBottom:4}}>Débito/transf — recargo sobre efectivo (%)</div>
+            <input value={f.fin_debito_recargo_pct} onChange={e=>set('fin_debito_recargo_pct',e.target.value)} type="number" step="0.01"
+              style={{width:'100%',background:C.bg,border:`1px solid ${'#a78bfa'}55`,borderRadius:8,padding:'8px 12px',color:'#a78bfa',fontSize:14,fontWeight:700,outline:'none',textAlign:'right'}}/>
+          </div>
+          <div>
+            <div style={{color:C.textMuted,fontSize:11,marginBottom:4}}>VISA 3 CSI — descuento sobre lista (%)</div>
+            <input value={f.fin_visa_3csi_desc_pct} onChange={e=>set('fin_visa_3csi_desc_pct',e.target.value)} type="number" step="0.01"
+              style={{width:'100%',background:C.bg,border:`1px solid ${'#a78bfa'}55`,borderRadius:8,padding:'8px 12px',color:'#a78bfa',fontSize:14,fontWeight:700,outline:'none',textAlign:'right'}}/>
+          </div>
+          <div>
+            <div style={{color:C.textMuted,fontSize:11,marginBottom:4}}>VISA 9 cuotas — coeficiente (%)</div>
+            <input value={f.fin_visa_9_coef} onChange={e=>set('fin_visa_9_coef',e.target.value)} type="number" step="0.01"
+              style={{width:'100%',background:C.bg,border:`1px solid ${'#a78bfa'}55`,borderRadius:8,padding:'8px 12px',color:'#a78bfa',fontSize:14,fontWeight:700,outline:'none',textAlign:'right'}}/>
+          </div>
+          <div>
+            <div style={{color:C.textMuted,fontSize:11,marginBottom:4}}>VISA/NX 12 cuotas — coeficiente (%)</div>
+            <input value={f.fin_visa_12_coef} onChange={e=>set('fin_visa_12_coef',e.target.value)} type="number" step="0.01"
+              style={{width:'100%',background:C.bg,border:`1px solid ${'#a78bfa'}55`,borderRadius:8,padding:'8px 12px',color:'#a78bfa',fontSize:14,fontWeight:700,outline:'none',textAlign:'right'}}/>
+          </div>
+          <div>
+            <div style={{color:C.textMuted,fontSize:11,marginBottom:4}}>Naranja X 8 cuotas — coeficiente (%)</div>
+            <input value={f.fin_nx_8_coef} onChange={e=>set('fin_nx_8_coef',e.target.value)} type="number" step="0.01"
+              style={{width:'100%',background:C.bg,border:`1px solid ${'#a78bfa'}55`,borderRadius:8,padding:'8px 12px',color:'#a78bfa',fontSize:14,fontWeight:700,outline:'none',textAlign:'right'}}/>
+          </div>
+          <div>
+            <div style={{color:C.textMuted,fontSize:11,marginBottom:4}}>Naranja X 10 cuotas — coeficiente (%)</div>
+            <input value={f.fin_nx_10_coef} onChange={e=>set('fin_nx_10_coef',e.target.value)} type="number" step="0.01"
+              style={{width:'100%',background:C.bg,border:`1px solid ${'#a78bfa'}55`,borderRadius:8,padding:'8px 12px',color:'#a78bfa',fontSize:14,fontWeight:700,outline:'none',textAlign:'right'}}/>
+          </div>
+        </div>
+        <div style={{color:C.textDim,fontSize:11,marginTop:8}}>Los coeficientes (ej. 149 = se multiplica el precio efectivo × 1.49 y se divide en cuotas) reflejan el costo financiero total de cada plan. El descuento efectivo se toma del campo "Descuento contado" de arriba.</div>
       </div>
     </div>
 
@@ -2980,7 +3134,7 @@ export default function App() {
       {!loading&&vista==='cuentas'&&<CuentasView clientes={clientes} empresa={empresa} onRefresh={loadData}/>}
       {!loading&&vista==='comprobantes'&&<ComprobantesView clientes={clientes} vendedores={vendedores} materiales={materiales} empresa={empresa} onRefresh={loadData}/>}
       {!loading&&vista==='caja'&&<CajaView clientes={clientes} onRefresh={loadData}/>}
-      {!loading&&vista==='productos'&&<ProductosView materiales={materiales} proveedores={proveedores} onRefresh={loadData}/>}
+      {!loading&&vista==='productos'&&<ProductosView materiales={materiales} proveedores={proveedores} empresa={empresa} onRefresh={()=>loadData(true)}/>}
       {!loading&&vista==='actividad'&&<ActividadView/>}
       {!loading&&vista==='importar'&&<ImportarView onRefresh={loadData}/>}
       {!loading&&vista==='config'&&<ConfigView empresa={empresa} onRefresh={loadData}/>}
