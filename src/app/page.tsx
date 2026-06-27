@@ -2514,7 +2514,7 @@ function ProductosView({materiales,proveedores,empresa,onRefresh}:{materiales:an
   const bulkDelete=async()=>{
     if(!confirm(`¿Eliminar ${checked.size} producto(s)?`))return
     setBusy(true)
-    await Promise.all([...checked].map(id=>deleteMaterial(id)))
+    await Promise.all(Array.from(checked).map(id=>deleteMaterial(id)))
     setChecked(new Set()); setBusy(false); onRefresh()
   }
 
@@ -2525,7 +2525,7 @@ function ProductosView({materiales,proveedores,empresa,onRefresh}:{materiales:an
     if(ajuste.l1!=='') updates.lista1_pct=parseFloat(ajuste.l1)
     if(ajuste.l2!=='') updates.lista2_pct=parseFloat(ajuste.l2)
     if(ajuste.l3!=='') updates.lista3_pct=parseFloat(ajuste.l3)
-    await Promise.all([...checked].map(id=>updateMaterial(id,updates)))
+    await Promise.all(Array.from(checked).map((id:string)=>updateMaterial(id,updates)))
     setChecked(new Set()); setModalAjuste(false); setAjuste({l1:'',l2:'',l3:''}); setBusy(false); onRefresh()
   }
 
