@@ -26,7 +26,7 @@ const TIPOS: Record<TipoComprobante, { label: string; letra: string; leyenda: st
   nota_credito: { label: 'Nota de Crédito', letra: 'NC', leyenda: 'Documento no válido como factura' },
 }
 
-interface ItemRow { codigo: string; detalle: string; cantidad: string; precio: string; lista?: 1|2|3|null; precioManual?: boolean }
+interface ItemRow { codigo: string; detalle: string; cantidad: string; precio: string; lista?: 1|2|3|null; precioManual?: boolean; precioBase?: string }
 
 function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { mostrarEfectivo?: boolean; mostrarFinanciacion?: boolean }): string {
   const t = TIPOS[comp.tipo as TipoComprobante]
@@ -761,7 +761,11 @@ function NuevoComprobanteInner() {
     setRecargoOn(v)
     setItems(a => a.map(it => {
       if (it.lista !== undefined && it.lista !== null) return it
-      if (it.precioManual) return it
+      if (it.precioManual && it.precioBase) {
+        const base = num(it.precioBase)
+        const precio = Math.round((v ? base * (1 + recargoGenPct / 100) : base) * 100) / 100
+        return { ...it, precio: String(precio) }
+      }
       const m = materiales.find(x => x.nombre === it.detalle)
       if (!m) return it
       const base = Number(m.precio_ref || 0)
@@ -777,7 +781,7 @@ function NuevoComprobanteInner() {
     setItems(a => a.map((it, j) => {
       if (j !== i) return it
       const precio = m ? String(precioConLista(m, v)) || it.precio : it.precio
-      return { ...it, lista: v, precio, precioManual: false }
+      return { ...it, lista: v, precio, precioManual: false, precioBase: undefined }
     }))
   }
 
@@ -1390,7 +1394,7 @@ function NuevoComprobanteInner() {
                         </td>
                         {/* Precio */}
                         <td style={{ padding: '4px 6px' }}>
-                          <input type="number" value={it.precio} onChange={e => setItems(a => a.map((it2, j) => j === i ? { ...it2, precio: e.target.value, precioManual: true } : it2))}
+                          <input type="number" value={it.precio} onChange={e => setItems(a => a.map((it2, j) => { if (j !== i) return it2; const base = recargoOn ? Math.round(num(e.target.value) / (1 + recargoGenPct / 100) * 100) / 100 : num(e.target.value); return { ...it2, precio: e.target.value, precioManual: true, precioBase: String(base) } }))}
                             style={{ ...inputStyle, padding: '5px 8px', fontSize: 12, textAlign: 'right', color: C.accent, fontWeight: 700, background: 'transparent', border: `1px solid transparent` }}
                             onFocus={e => (e.currentTarget.style.borderColor = C.accent)}
                             onBlur={e => (e.currentTarget.style.borderColor = 'transparent')} />
