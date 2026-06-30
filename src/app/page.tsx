@@ -577,6 +577,8 @@ function PedidosView({pedidos,materiales,onRefresh}:{pedidos:Pedido[];materiales
   // Si quedó un borrador a medio cargar, reabrir el modal automáticamente al volver
   const [showNuevo,setShowNuevo]=useState(()=>!!leerDraft())
   const [changing,setChanging]=useState<string|null>(null)
+  const [seleccionados,setSeleccionados]=useState<Set<string>>(new Set())
+  const [bulkChanging,setBulkChanging]=useState(false)
 
   const filtered=pedidos.filter(p=>{
     const mf=filtro==='todos'||p.estado===filtro||(filtro==='atrasado'&&p.atrasado)
@@ -587,10 +589,26 @@ function PedidosView({pedidos,materiales,onRefresh}:{pedidos:Pedido[];materiales
     return mf&&ms
   })
 
+  const toggleSel=(id:string)=>setSeleccionados(s=>{
+    const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n
+  })
+  const todosSeleccionados=filtered.length>0&&filtered.every(p=>seleccionados.has(p.id))
+  const selAll=()=>setSeleccionados(todosSeleccionados?new Set():new Set(filtered.map(p=>p.id)))
+
   const handleEstado=async(id:string,estado:EstadoPedido)=>{
     setChanging(id)
     try { await updateEstadoPedido(id,estado); onRefresh() }
     catch(e){console.error(e)} finally {setChanging(null)}
+  }
+
+  const handleBulkEstado=async(estado:EstadoPedido)=>{
+    if(!seleccionados.size||bulkChanging) return
+    setBulkChanging(true)
+    try {
+      await Promise.all([...seleccionados].map(id=>updateEstadoPedido(id,estado)))
+      setSeleccionados(new Set())
+      onRefresh()
+    } catch(e){console.error(e)} finally{setBulkChanging(false)}
   }
 
   const handleDelete=async(p:Pedido)=>{
@@ -599,7 +617,7 @@ function PedidosView({pedidos,materiales,onRefresh}:{pedidos:Pedido[];materiales
     catch(e){console.error(e); alert('No se pudo borrar el pedido')}
   }
 
-  return <div>
+  return <div style={{paddingBottom:seleccionados.size>0?100:0}}>
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18,flexWrap:'wrap',gap:10}}>
       <h2 style={{color:C.text,fontSize:20,fontWeight:800}}>Pedidos</h2>
       <Btn onClick={()=>setShowNuevo(true)}>+ Nuevo</Btn>
@@ -609,7 +627,7 @@ function PedidosView({pedidos,materiales,onRefresh}:{pedidos:Pedido[];materiales
       style={{width:'100%',background:C.surfaceAlt,border:`1px solid ${C.border}`,
         borderRadius:8,padding:'9px 12px',color:C.text,fontSize:14,marginBottom:12,outline:'none'}} />
 
-    <div style={{display:'flex',gap:6,marginBottom:18,flexWrap:'wrap'}}>
+    <div style={{display:'flex',gap:6,marginBottom:12,flexWrap:'wrap'}}>
       {[['todos','Todos'],['urgente','Urgentes'],['atrasado','Atrasados'],
         ['preparacion','Preparando'],['pendiente','Pendiente'],['entregado','Entregado'],['cancelado','Cancelado']].map(([k,l])=>
         <button key={k} onClick={()=>setFiltro(k)} style={{
@@ -621,36 +639,86 @@ function PedidosView({pedidos,materiales,onRefresh}:{pedidos:Pedido[];materiales
       )}
     </div>
 
+    {/* Fila seleccionar todos */}
+    {filtered.length>0&&<div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10,padding:'4px 2px'}}>
+      <input type="checkbox" checked={todosSeleccionados} onChange={selAll}
+        style={{width:16,height:16,cursor:'pointer'}}/>
+      <span style={{color:C.textMuted,fontSize:12,flex:1}}>
+        {seleccionados.size>0
+          ?`${seleccionados.size} seleccionado${seleccionados.size>1?'s':''}`
+          :`Seleccionar todos (${filtered.length})`}
+      </span>
+      {seleccionados.size>0&&<button onClick={()=>setSeleccionados(new Set())}
+        style={{background:'none',border:'none',color:C.textMuted,fontSize:11,cursor:'pointer',padding:'0 4px'}}>
+        ✕ Limpiar</button>}
+    </div>}
+
     <div style={{display:'flex',flexDirection:'column',gap:10}}>
-      {filtered.map(p=>{const e=ESTADOS[p.estado]; return <div key={p.id}
-        style={{background:C.surface,border:`1px solid ${p.atrasado?C.purple:C.border}`,
-          borderLeft:`4px solid ${e.color}`,borderRadius:10,padding:'14px 16px'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:8,marginBottom:10}}>
-          <div>
-            <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:3}}>
-              <span style={{color:C.textDim,fontSize:11,fontFamily:"'Space Mono',monospace"}}>{p.codigo}</span>
-              {p.atrasado&&<span style={{background:C.purpleDim,color:C.purple,fontSize:10,padding:'1px 6px',borderRadius:4,fontWeight:700}}>ATRASADO</span>}
+      {filtered.map(p=>{
+        const e=ESTADOS[p.estado]
+        const esSel=seleccionados.has(p.id)
+        return <div key={p.id}
+          style={{background:esSel?C.accentDim:C.surface,
+            border:`1px solid ${esSel?C.accent:p.atrasado?C.purple:C.border}`,
+            borderLeft:`4px solid ${e.color}`,borderRadius:10,padding:'14px 16px',
+            transition:'background 0.15s,border-color 0.15s'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:8,marginBottom:10}}>
+            <div style={{display:'flex',gap:10,alignItems:'flex-start',flex:1,minWidth:0}}>
+              <input type="checkbox" checked={esSel} onChange={()=>toggleSel(p.id)}
+                style={{width:16,height:16,cursor:'pointer',marginTop:3,flexShrink:0}}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:3}}>
+                  <span style={{color:C.textDim,fontSize:11,fontFamily:"'Space Mono',monospace"}}>{p.codigo}</span>
+                  {p.atrasado&&<span style={{background:C.purpleDim,color:C.purple,fontSize:10,padding:'1px 6px',borderRadius:4,fontWeight:700}}>ATRASADO</span>}
+                </div>
+                <div style={{color:C.text,fontWeight:700,fontSize:15,cursor:'pointer'}} onClick={()=>setSelected(p)}>{p.cliente}</div>
+                <div style={{color:C.textMuted,fontSize:12,marginTop:2}}>📍 {p.direccion}</div>
+                <div style={{color:C.textMuted,fontSize:12}}>🕐 {fmtHora(p.hora_entrega)} · 📅 {fmtFecha(p.fecha_entrega)} · 🗺️ {p.zona?`Zona ${p.zona}`:'sin zona'}</div>
+              </div>
             </div>
-            <div style={{color:C.text,fontWeight:700,fontSize:15,cursor:'pointer'}} onClick={()=>setSelected(p)}>{p.cliente}</div>
-            <div style={{color:C.textMuted,fontSize:12,marginTop:2}}>📍 {p.direccion}</div>
-            <div style={{color:C.textMuted,fontSize:12}}>🕐 {fmtHora(p.hora_entrega)} · 📅 {fmtFecha(p.fecha_entrega)} · 🗺️ {p.zona?`Zona ${p.zona}`:'sin zona'}</div>
+            <Badge estado={p.estado}/>
           </div>
-          <Badge estado={p.estado}/>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
+            {(Object.keys(ESTADOS) as EstadoPedido[]).filter(k=>k!==p.estado).map(k=>{const ec=ESTADOS[k]; return <button key={k}
+              onClick={()=>handleEstado(p.id,k)} disabled={changing===p.id||bulkChanging}
+              style={{background:ec.bg,color:ec.color,border:`1px solid ${ec.color}40`,
+                borderRadius:5,padding:'3px 9px',fontSize:11,cursor:'pointer',fontWeight:600,
+                opacity:(changing===p.id||bulkChanging)?0.6:1}}>
+              → {ec.label}</button>})}
+            <button onClick={()=>handleDelete(p)} title="Borrar pedido"
+              style={{background:C.redDim,color:C.red,border:`1px solid ${C.red}40`,
+                borderRadius:5,padding:'3px 9px',fontSize:11,cursor:'pointer',fontWeight:600,marginLeft:'auto'}}>
+              🗑️</button>
+          </div>
         </div>
-        <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
-          {(Object.keys(ESTADOS) as EstadoPedido[]).filter(k=>k!==p.estado).map(k=>{const ec=ESTADOS[k]; return <button key={k}
-            onClick={()=>handleEstado(p.id,k)} disabled={changing===p.id}
-            style={{background:ec.bg,color:ec.color,border:`1px solid ${ec.color}40`,
-              borderRadius:5,padding:'3px 9px',fontSize:11,cursor:'pointer',fontWeight:600,opacity:changing===p.id?0.6:1}}>
-            → {ec.label}</button>})}
-          <button onClick={()=>handleDelete(p)} title="Borrar pedido"
-            style={{background:C.redDim,color:C.red,border:`1px solid ${C.red}40`,
-              borderRadius:5,padding:'3px 9px',fontSize:11,cursor:'pointer',fontWeight:600,marginLeft:'auto'}}>
-            🗑️</button>
-        </div>
-      </div>})}
+      })}
       {filtered.length===0&&<div style={{color:C.textMuted,textAlign:'center',padding:40}}>Sin pedidos</div>}
     </div>
+
+    {/* Barra de acciones masivas */}
+    {seleccionados.size>0&&<div style={{
+      position:'fixed',bottom:56,left:0,right:0,zIndex:200,
+      background:C.surface,borderTop:`2px solid ${C.accent}`,
+      padding:'10px 16px',boxShadow:'0 -4px 24px #000B'}}>
+      <div style={{maxWidth:680,margin:'0 auto'}}>
+        <div style={{color:C.accent,fontSize:12,fontWeight:700,marginBottom:8}}>
+          ✓ {seleccionados.size} pedido{seleccionados.size>1?'s':''} seleccionado{seleccionados.size>1?'s':''}
+          {bulkChanging?' · Aplicando...':''}
+        </div>
+        <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
+          {(Object.keys(ESTADOS) as EstadoPedido[]).map(k=>{const ec=ESTADOS[k]; return <button key={k}
+            onClick={()=>handleBulkEstado(k)} disabled={bulkChanging}
+            style={{background:ec.bg,color:ec.color,border:`1px solid ${ec.color}40`,
+              borderRadius:6,padding:'5px 11px',fontSize:12,cursor:'pointer',fontWeight:700,
+              opacity:bulkChanging?0.5:1}}>
+            {ec.icon} {ec.label}</button>})}
+          <button onClick={()=>setSeleccionados(new Set())} disabled={bulkChanging}
+            style={{background:C.surfaceAlt,color:C.textMuted,border:`1px solid ${C.border}`,
+              borderRadius:6,padding:'5px 11px',fontSize:12,cursor:'pointer',fontWeight:600,marginLeft:'auto'}}>
+            Cancelar</button>
+        </div>
+      </div>
+    </div>}
 
     {selected&&<Modal onClose={()=>setSelected(null)} title={`✏️ ${selected.codigo}`}>
       <EditarPedido pedido={selected} onClose={()=>setSelected(null)}
