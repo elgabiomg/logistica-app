@@ -2890,7 +2890,7 @@ export default function App() {
       margin:'0 auto',boxSizing:'border-box' as any}}>
       {loading&&<Spinner/>}
       {!loading&&vista==='dashboard'&&<Dashboard modulo={modulo} pedidos={pedidos} clientes={clientes} materiales={materiales}/>}
-      {!loading&&vista==='pedidos'&&<PedidosView pedidos={pedidos} materiales={materiales} onRefresh={loadData}/>}
+      {!loading&&vista==='pedidos'&&<PedidosView pedidos={pedidos} materiales={materiales} onRefresh={()=>loadData(true)}/>}
       {!loading&&vista==='rutas'&&<RutasView pedidos={pedidos}/>}
       {!loading&&vista==='compras'&&<ComprasView pedidos={pedidos} materiales={materiales} proveedores={proveedores} onRefresh={loadData}/>}
       {!loading&&vista==='proveedores'&&<ProveedoresView proveedores={proveedores} materiales={materiales} onRefresh={loadData}/>}
