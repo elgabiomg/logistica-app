@@ -28,7 +28,7 @@ const TIPOS: Record<TipoComprobante, { label: string; letra: string; leyenda: st
 
 interface ItemRow { codigo: string; detalle: string; cantidad: string; precio: string; lista?: 1|2|3|null; precioManual?: boolean; precioBase?: string }
 
-function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { mostrarEfectivo?: boolean; mostrarFinanciacion?: boolean }): string {
+function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { mostrarEfectivo?: boolean; mostrarFinanciacion?: boolean; sinMembrete?: boolean }): string {
   const t = TIPOS[comp.tipo as TipoComprobante]
   const cl = comp.clientes || {}
   const items: ComprobanteItem[] = comp.comprobante_items || []
@@ -61,6 +61,7 @@ function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { most
 
   const mostrarEfectivo     = opts?.mostrarEfectivo     ?? false
   const mostrarFinanciacion = opts?.mostrarFinanciacion ?? false
+  const sinMembrete         = opts?.sinMembrete         ?? false
 
   const fila = (i: ComprobanteItem) => {
     if (esRemito) return `<tr><td class="c">${i.cantidad}</td><td>${i.codigo || ''}</td><td>${i.detalle}</td></tr>`
@@ -251,14 +252,14 @@ function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { most
   </head><body><div class="page">
 
   <div class="hdr">
-    <div class="hdr-empresa">
+    ${sinMembrete ? '' : `<div class="hdr-empresa">
       ${logo}
       <div>
         <div class="hdr-empresa-txt">${e.nombre || ''}</div>
         <div class="hdr-empresa-sub">${e.direccion || ''}${e.localidad ? ' — ' + e.localidad : ''}</div>
         <div class="hdr-empresa-sub">${e.telefono || ''}</div>
       </div>
-    </div>
+    </div>`}
     <div class="hdr-letra">
       ${esFacturaX ? `<div class="big">${t.letra}</div><div class="leyenda">${t.leyenda}</div>` : `<div style="font-size:13px;font-weight:700;color:#555;text-align:center">${t.label}</div>`}
     </div>
@@ -268,7 +269,7 @@ function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { most
     </div>
   </div>
 
-  <div class="empresa">
+  ${sinMembrete ? '' : `<div class="empresa">
     <div>
       <div style="font-weight:800;font-size:12px;margin-bottom:2px">${e.nombre || ''}</div>
       ${e.direccion ? `<div>${e.direccion}</div>` : ''}
@@ -281,7 +282,7 @@ function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { most
       ${e.iibb ? `<div><span class="lbl">IIBB:</span> ${e.iibb}</div>` : ''}
       ${e.inicio_actividad ? `<div><span class="lbl">Inicio actividad:</span> ${e.inicio_actividad}</div>` : ''}
     </div>
-  </div>
+  </div>`}
 
   <div class="cliente">
     <div>
@@ -359,7 +360,7 @@ function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { most
   return html
 }
 
-function imprimirComp(comp: any, empresa: EmpresaConfig | null, opts?: { mostrarEfectivo?: boolean; mostrarFinanciacion?: boolean }) {
+function imprimirComp(comp: any, empresa: EmpresaConfig | null, opts?: { mostrarEfectivo?: boolean; mostrarFinanciacion?: boolean; sinMembrete?: boolean }) {
   const html = generarHTMLComp(comp, empresa, opts)
   const w = window.open('', '_blank')
   if (!w) return
@@ -761,7 +762,6 @@ function NuevoComprobanteInner() {
   const cambiarRecargo = (v: boolean) => {
     setRecargoOn(v)
     setItems(a => a.map(it => {
-      if (it.lista !== undefined && it.lista !== null) return it
       if (it.precioManual && it.precioBase) {
         const base = num(it.precioBase)
         const precio = Math.round((v ? base * (1 + recargoGenPct / 100) : base) * 100) / 100
@@ -770,8 +770,9 @@ function NuevoComprobanteInner() {
       if (it.precioManual) return it
       const m = materiales.find(x => x.nombre === it.detalle)
       if (!m) return it
+      const listaEfectiva = (it.lista !== undefined && it.lista !== null) ? it.lista : listaGlobal
       const base = Number(m.precio_ref || 0)
-      const pct = listaGlobal ? listasPct[listaGlobal] : null
+      const pct = listaEfectiva ? listasPct[listaEfectiva] : null
       const conLista = pct != null ? base * (1 + pct / 100) : base
       const precio = Math.round((v ? conLista * (1 + recargoGenPct / 100) : conLista) * 100) / 100
       return { ...it, precio: String(precio || it.precio) }
@@ -989,6 +990,12 @@ function NuevoComprobanteInner() {
         }
         return
       }
+      // F4 — imprimir sin membrete
+      if (e.key === 'F4') {
+        e.preventDefault()
+        if (compGuardado) imprimirComp(compGuardado, empresa, { mostrarEfectivo: compFlags.descContado, mostrarFinanciacion: compFlags.recargo, sinMembrete: true })
+        return
+      }
       // F2 — panel de medios de pago (solo factura_x)
       if (e.key === 'F2') {
         e.preventDefault()
@@ -1005,7 +1012,7 @@ function NuevoComprobanteInner() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [items, filaActiva, saving, saved, modalPost, modalPago, compGuardado, picker, nuevoCli, empresa, tipo, total, guardar, guardarConPagos, abrirPanelPago])
+  }, [items, filaActiva, saving, saved, modalPost, modalPago, compGuardado, picker, nuevoCli, empresa, tipo, total, guardar, guardarConPagos, abrirPanelPago, compFlags])
 
   const resetForm = () => {
     setTipo('presupuesto')
@@ -1387,7 +1394,9 @@ function NuevoComprobanteInner() {
                               const listaEf = it.lista !== undefined ? it.lista : listaGlobal
                               const sel = listaEf === v
                               const color = v === 1 ? C.accent : v === 2 ? '#a78bfa' : v === 3 ? '#34d399' : C.textDim
-                              return <button key={String(v)} onClick={() => cambiarListaItem(i, v)} title={v ? `${listasNombre[v]} (${listasPct[v]}%)` : 'Precio manual'}
+                              const mat = materiales.find(m => m.nombre === it.detalle)
+                              const pctEf = v ? (v === 1 ? mat?.lista1_pct : v === 2 ? mat?.lista2_pct : mat?.lista3_pct) ?? listasPct[v] : null
+                              return <button key={String(v)} onClick={() => cambiarListaItem(i, v)} title={v ? `${listasNombre[v]} (${pctEf}%)` : 'Precio manual'}
                                 style={{ background: sel ? `${color}22` : 'transparent', border: `1px solid ${sel ? color : C.border}`, borderRadius: 4, padding: '2px 4px', cursor: 'pointer', color: sel ? color : C.textDim, fontSize: 10, fontWeight: 700, lineHeight: 1 }}>
                                 {v ? `L${v}` : '—'}
                               </button>
@@ -1585,6 +1594,15 @@ function NuevoComprobanteInner() {
                 <div>
                   <div style={{ color: C.blue, fontWeight: 700, fontSize: 13 }}>Imprimir</div>
                   <div style={{ color: C.textMuted, fontSize: 11, marginTop: 1 }}>Enviá directamente a la impresora</div>
+                </div>
+              </button>
+
+              <button onClick={() => imprimirComp(compGuardado, empresa, { mostrarEfectivo: compFlags.descContado, mostrarFinanciacion: compFlags.recargo, sinMembrete: true })}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, background: C.blueDim, border: `1px solid ${C.blue}50`, borderRadius: 10, padding: '12px 16px', cursor: 'pointer', textAlign: 'left' }}>
+                <span style={{ fontSize: 22 }}>🖨️</span>
+                <div>
+                  <div style={{ color: C.blue, fontWeight: 700, fontSize: 13 }}>Sin membrete <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.7 }}>F4</span></div>
+                  <div style={{ color: C.textMuted, fontSize: 11, marginTop: 1 }}>Imprime sin los datos de la empresa</div>
                 </div>
               </button>
 
