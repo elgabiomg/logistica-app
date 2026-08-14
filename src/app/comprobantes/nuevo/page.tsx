@@ -586,6 +586,8 @@ const C = {
   header: '#141824', headerBorder: '#2A2F45',
 }
 
+const MOBILE_STYLES = '.ncp-mobile{display:none}.ncp-desktop{display:flex}@media(max-width:767px){.ncp-mobile{display:flex!important;flex-direction:column;min-height:100vh}.ncp-desktop{display:none!important}}'
+
 // ── Componentes base ─────────────────────────────────────────────────
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -663,7 +665,6 @@ function NuevoComprobanteInner() {
   const [filaActiva, setFilaActiva] = useState<number>(0)
 
   // estado
-  const [isMobile, setIsMobile] = useState(false)
   const [saving, setSaving] = useState(false)
   const [errMsg, setErrMsg] = useState('')
   const [saved, setSaved] = useState(false)
@@ -720,14 +721,6 @@ function NuevoComprobanteInner() {
       setFocusNext(null)
     }
   }, [focusNext, items.length])
-
-  // detectar mobile
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768)
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
-  }, [])
 
   // cálculos
   const subtotal = items.reduce((s, it) => s + num(it.cantidad) * num(it.precio), 0)
@@ -1047,10 +1040,13 @@ function NuevoComprobanteInner() {
   const pvNum = empresa?.punto_venta || 1
   const nroDisplay = fmt(pvNum, nroPreview ?? 0)
 
-  // ── Mobile layout ────────────────────────────────────────────────
-  if (isMobile) {
-    return (
-      <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', flexDirection: 'column', fontFamily: "'Inter', system-ui, sans-serif" }}>
+  // ── Layout responsive ────────────────────────────────────────────────
+  return (
+    <>
+      <style>{MOBILE_STYLES}</style>
+
+      {/* ── MOBILE ── */}
+      <div className="ncp-mobile" style={{ background: C.bg, flexDirection: 'column', fontFamily: "'Inter', system-ui, sans-serif" }}>
 
         {/* Header mobile */}
         <header style={{ background: C.header, borderBottom: `1px solid ${C.headerBorder}`, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, zIndex: 100 }}>
@@ -1365,12 +1361,9 @@ function NuevoComprobanteInner() {
           </div>
         )}
       </div>
-    )
-  }
 
-  // ── Desktop layout ────────────────────────────────────────────────
-  return (
-    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', flexDirection: 'column', fontFamily: "'Inter', system-ui, sans-serif" }}>
+      {/* ── DESKTOP ── */}
+      <div className="ncp-desktop" style={{ minHeight: '100vh', background: C.bg, flexDirection: 'column', fontFamily: "'Inter', system-ui, sans-serif" }}>
 
       {/* ── TOP BAR ── */}
       <header style={{ background: C.header, borderBottom: `1px solid ${C.headerBorder}`, padding: '0 20px', height: 52, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, position: 'sticky', top: 0, zIndex: 100 }}>
@@ -2012,6 +2005,7 @@ function NuevoComprobanteInner() {
         </div>
       )}
     </div>
+    </>
   )
 }
 
