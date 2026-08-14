@@ -15,3 +15,11 @@ input[type="date"], input[type="time"] { color-scheme: dark; }
 ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 * { -webkit-tap-highlight-color: transparent; }
+
+/* ── Responsive layout comprobante ── */
+.ncp-mobile { display: none !important; }
+.ncp-desktop { display: flex; }
+@media (max-width: 767px) {
+  .ncp-mobile { display: flex !important; flex-direction: column; min-height: 100vh; }
+  .ncp-desktop { display: none !important; }
+}
