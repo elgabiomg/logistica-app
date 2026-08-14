@@ -663,6 +663,7 @@ function NuevoComprobanteInner() {
   const [filaActiva, setFilaActiva] = useState<number>(0)
 
   // estado
+  const [isMobile, setIsMobile] = useState(false)
   const [saving, setSaving] = useState(false)
   const [errMsg, setErrMsg] = useState('')
   const [saved, setSaved] = useState(false)
@@ -719,6 +720,14 @@ function NuevoComprobanteInner() {
       setFocusNext(null)
     }
   }, [focusNext, items.length])
+
+  // detectar mobile
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   // cálculos
   const subtotal = items.reduce((s, it) => s + num(it.cantidad) * num(it.precio), 0)
@@ -1038,6 +1047,328 @@ function NuevoComprobanteInner() {
   const pvNum = empresa?.punto_venta || 1
   const nroDisplay = fmt(pvNum, nroPreview ?? 0)
 
+  // ── Mobile layout ────────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', flexDirection: 'column', fontFamily: "'Inter', system-ui, sans-serif" }}>
+
+        {/* Header mobile */}
+        <header style={{ background: C.header, borderBottom: `1px solid ${C.headerBorder}`, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, zIndex: 100 }}>
+          <button onClick={() => router.push('/')} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: 13, padding: '6px 0', borderRadius: 6 }}>
+            ← Volver
+          </button>
+          <span style={{ color: C.text, fontWeight: 700, fontSize: 15 }}>🧾 Comprobante</span>
+          <div style={{ flex: 1 }} />
+          <select value={tipo} onChange={e => setTipo(e.target.value as TipoComprobante)}
+            style={{ ...selectStyle, fontSize: 12, padding: '6px 8px', width: 'auto', background: C.accent, color: '#000', fontWeight: 700, border: 'none' }}>
+            {(Object.keys(TIPOS) as TipoComprobante[]).map(k => (
+              <option key={k} value={k}>{TIPOS[k].label}</option>
+            ))}
+          </select>
+        </header>
+
+        {/* Contenido scrollable */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 84 }}>
+
+          {/* Card: Info del comprobante */}
+          <div style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
+            <div style={{ textAlign: 'center', padding: '14px 0 12px', borderBottom: `1px solid ${C.border}`, background: C.header }}>
+              <div style={{ color: C.textMuted, fontSize: 10, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>COMPROBANTE</div>
+              <div style={{ color: C.accent, fontSize: 22, fontWeight: 800, fontFamily: "'Space Mono', monospace", letterSpacing: 2 }}>{nroDisplay}</div>
+              <div style={{ marginTop: 6, display: 'inline-block', background: C.accentDim, border: `1px solid ${C.accent}40`, borderRadius: 20, padding: '2px 12px', fontSize: 11, color: C.accent, fontWeight: 700 }}>
+                {TIPOS[tipo].letra}
+              </div>
+            </div>
+            <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <Field label="Fecha">
+                  <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={inputStyle} />
+                </Field>
+                <Field label="Vendedor">
+                  <select value={vendedor} onChange={e => setVendedor(e.target.value)} style={selectStyle}>
+                    {vendedores.map(v => <option key={v.id} value={v.nombre}>{v.nombre}</option>)}
+                    {!vendedores.length && <option>{getOp() || 'Sin vendedor'}</option>}
+                  </select>
+                </Field>
+              </div>
+              <Field label="Condición de venta">
+                <select value={condicion} onChange={e => setCondicion(e.target.value)} style={selectStyle}>
+                  <option value="CONTADO">💵 Contado</option>
+                  <option value="CUENTA CORRIENTE">📒 Cuenta corriente</option>
+                </select>
+              </Field>
+              {condicion === 'CONTADO' && (
+                <Field label="Medio de pago">
+                  <select value={medioPago} onChange={e => setMedioPago(e.target.value)} style={selectStyle}>
+                    {['efectivo', 'transferencia', 'tarjeta', 'cheque'].map(x => <option key={x} value={x}>{x}</option>)}
+                  </select>
+                </Field>
+              )}
+              {condicion === 'CUENTA CORRIENTE' && (
+                <div style={{ background: C.blueDim, border: `1px solid ${C.blue}30`, borderRadius: 7, padding: '9px 12px', color: C.blue, fontSize: 12 }}>
+                  📒 Suma a cuenta corriente del cliente
+                </div>
+              )}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', background: recOn ? C.accentDim : C.surfaceAlt, border: `1px solid ${recOn ? C.accent : C.border}`, borderRadius: 8, padding: '11px 14px' }}>
+                <input type="checkbox" checked={recOn} onChange={e => toggleRec(e.target.checked)} style={{ width: 17, height: 17, cursor: 'pointer' }} />
+                <span style={{ color: recOn ? C.accent : C.textMuted, fontSize: 14, fontWeight: 700 }}>
+                  Recargo {String(recGen).replace('.', ',')}%
+                </span>
+              </label>
+            </div>
+          </div>
+
+          {/* Card: Cliente */}
+          <div style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}` }}>
+              {(['datos', 'direccion', 'obs'] as const).map(tab => {
+                const labels = { datos: 'Cliente', direccion: 'Dirección', obs: 'Observaciones' }
+                return (
+                  <button key={tab} onClick={() => setTabCliente(tab)}
+                    style={{ flex: 1, padding: '11px 6px', background: 'none', border: 'none', borderBottom: `2px solid ${tabCliente === tab ? C.accent : 'transparent'}`, color: tabCliente === tab ? C.accent : C.textMuted, fontSize: 12, fontWeight: tabCliente === tab ? 700 : 400, cursor: 'pointer' }}>
+                    {labels[tab]}
+                  </button>
+                )
+              })}
+            </div>
+            <div style={{ padding: 14 }}>
+              {tabCliente === 'datos' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ position: 'relative' }}>
+                    <Field label="Cliente">
+                      {clienteId
+                        ? <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: C.surfaceAlt, border: `1px solid ${C.accent}55`, borderRadius: 6, padding: '9px 12px' }}>
+                          <span style={{ flex: 1, color: C.text, fontSize: 13, fontWeight: 600 }}>👤 {cliSeleccionado?.nombre}</span>
+                          <button onClick={() => { setClienteId(''); setCliQuery('') }} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 16, padding: 0 }}>✕</button>
+                        </div>
+                        : <div style={{ display: 'flex', gap: 8 }}>
+                          <input value={cliQuery} onChange={e => { setCliQuery(e.target.value); setCliOpen(true) }}
+                            onFocus={() => setCliOpen(true)}
+                            placeholder="Buscar por nombre, DNI o CUIT..."
+                            style={{ ...inputStyle, flex: 1 }} />
+                          <button onClick={() => setNuevoCli(true)}
+                            style={{ background: C.greenDim, color: C.green, border: `1px solid ${C.green}40`, borderRadius: 6, padding: '0 14px', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>+ Nuevo</button>
+                        </div>}
+                    </Field>
+                    {cliOpen && !clienteId && cliQuery.trim().length >= 2 && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, marginTop: 2, maxHeight: 200, overflowY: 'auto', boxShadow: '0 8px 24px #000A' }}>
+                        {clisFiltrados.map(c => (
+                          <div key={c.id} onClick={() => { setClienteId(c.id); setCliOpen(false); setCliQuery('') }}
+                            style={{ padding: '11px 14px', cursor: 'pointer', borderBottom: `1px solid ${C.border}` }}>
+                            <div style={{ color: C.text, fontSize: 13, fontWeight: 600 }}>{c.nombre}</div>
+                            <div style={{ color: C.textDim, fontSize: 11 }}>{c.condicion_iva}{c.cuit ? ` · CUIT ${c.cuit}` : ''}</div>
+                          </div>
+                        ))}
+                        {!clisFiltrados.length && <div style={{ padding: '11px 14px', color: C.textDim, fontSize: 12 }}>Sin resultados</div>}
+                      </div>
+                    )}
+                  </div>
+                  {!clienteId && (
+                    <Field label="Nombre libre (sin registrar)">
+                      <input value={clienteLibre} onChange={e => setClienteLibre(e.target.value)} placeholder="Consumidor Final" style={inputStyle} />
+                    </Field>
+                  )}
+                  {cliSeleccionado && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <Field label="CUIT">
+                        <input value={cliSeleccionado.cuit || ''} readOnly placeholder="—" style={{ ...inputStyle, color: C.textMuted }} />
+                      </Field>
+                      <Field label="Condición IVA">
+                        <input value={cliSeleccionado.condicion_iva || 'Consumidor Final'} readOnly style={{ ...inputStyle, color: C.textMuted }} />
+                      </Field>
+                    </div>
+                  )}
+                </div>
+              )}
+              {tabCliente === 'direccion' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <Field label="Dirección">
+                    <input value={cliSeleccionado?.direccion || ''} readOnly placeholder="—" style={{ ...inputStyle, color: C.textMuted }} />
+                  </Field>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
+                    <Field label="Localidad">
+                      <input value={cliSeleccionado?.localidad || ''} readOnly placeholder="—" style={{ ...inputStyle, color: C.textMuted }} />
+                    </Field>
+                    <Field label="C.P.">
+                      <input value={cliSeleccionado?.cp || ''} readOnly placeholder="—" style={{ ...inputStyle, color: C.textMuted }} />
+                    </Field>
+                  </div>
+                  <Field label="Provincia">
+                    <input value={cliSeleccionado?.provincia || ''} readOnly placeholder="—" style={{ ...inputStyle, color: C.textMuted }} />
+                  </Field>
+                </div>
+              )}
+              {tabCliente === 'obs' && (
+                <Field label="Observaciones / Pie del comprobante">
+                  <textarea value={obs} onChange={e => setObs(e.target.value)}
+                    style={{ ...inputStyle, minHeight: 90, resize: 'vertical', fontFamily: 'inherit' }} />
+                </Field>
+              )}
+            </div>
+          </div>
+
+          {/* Card: Ítems */}
+          <div style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', borderBottom: `1px solid ${C.border}`, background: C.header }}>
+              <span style={{ color: C.text, fontWeight: 700, fontSize: 14 }}>
+                Ítems ({items.filter(it => it.detalle && num(it.cantidad) > 0).length})
+              </span>
+              <div style={{ flex: 1 }} />
+              <button onClick={addItem}
+                style={{ background: C.greenDim, color: C.green, border: `1px solid ${C.green}40`, borderRadius: 6, padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                + Agregar
+              </button>
+            </div>
+            <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {items.map((it, i) => (
+                <div key={i} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: 10 }}>
+                  {/* Fila 1: selector + descripción + búsqueda + eliminar */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                    <span style={{ color: C.textDim, fontSize: 11, minWidth: 16, textAlign: 'center' }}>{i + 1}</span>
+                    <select value="" onChange={e => { const m = materiales.find(x => x.id === e.target.value); if (m) { aplicarMat(i, m); avanzar(i) } }}
+                      style={{ ...selectStyle, padding: '7px 4px', fontSize: 12, width: 34, flexShrink: 0, color: C.textMuted }}>
+                      <option value="">⬇</option>
+                      {materiales.map(m => <option key={m.id} value={m.id}>{m.codigo ? `[${m.codigo}] ` : ''}{m.nombre}</option>)}
+                    </select>
+                    <input value={it.detalle}
+                      ref={el => { detRefs.current[i] = el }}
+                      onChange={e => setItem(i, 'detalle', e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); buscarItem(i, (e.target as HTMLInputElement).value) } }}
+                      placeholder="Descripción o código + Enter"
+                      style={{ ...inputStyle, flex: 1, padding: '7px 10px', fontSize: 13 }} />
+                    <button onClick={() => buscarItem(i)}
+                      style={{ background: C.blueDim, color: C.blue, border: `1px solid ${C.blue}30`, borderRadius: 6, padding: '7px 9px', cursor: 'pointer', fontSize: 13, flexShrink: 0 }}>🔍</button>
+                    {items.length > 1 && (
+                      <button onClick={() => delItem(i)}
+                        style={{ background: C.redDim, color: C.red, border: 'none', borderRadius: 6, padding: '7px 9px', cursor: 'pointer', fontSize: 13, flexShrink: 0 }}>✕</button>
+                    )}
+                  </div>
+                  {/* Fila 2: cantidad × precio = subtotal */}
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, paddingLeft: 22 }}>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      <label style={{ color: C.textMuted, fontSize: 10, fontWeight: 700, letterSpacing: 0.5 }}>CANT.</label>
+                      <input type="number" value={it.cantidad} onChange={e => setItem(i, 'cantidad', e.target.value)}
+                        style={{ ...inputStyle, textAlign: 'center', padding: '7px 6px', fontSize: 14 }} />
+                    </div>
+                    <span style={{ color: C.textDim, fontSize: 16, paddingBottom: 8 }}>×</span>
+                    <div style={{ flex: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      <label style={{ color: C.textMuted, fontSize: 10, fontWeight: 700, letterSpacing: 0.5 }}>PRECIO UNIT.</label>
+                      <input type="number" value={it.precio} onChange={e => setItem(i, 'precio', e.target.value)}
+                        style={{ ...inputStyle, textAlign: 'right', padding: '7px 8px', fontSize: 14, color: C.accent, fontWeight: 700 }} />
+                    </div>
+                    <span style={{ color: C.textDim, fontSize: 16, paddingBottom: 8 }}>=</span>
+                    <div style={{ flex: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      <label style={{ color: C.textMuted, fontSize: 10, fontWeight: 700, letterSpacing: 0.5 }}>SUBTOTAL</label>
+                      <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: '7px 8px', color: num(it.cantidad) * num(it.precio) > 0 ? C.text : C.textDim, fontWeight: 700, fontSize: 13, textAlign: 'right', fontFamily: "'Space Mono', monospace" }}>
+                        {num(it.cantidad) * num(it.precio) > 0 ? money(num(it.cantidad) * num(it.precio)) : '—'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Card: Descuentos */}
+          <div style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
+            <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, background: C.header }}>
+              <span style={{ color: C.text, fontWeight: 700, fontSize: 14 }}>Descuentos y percepciones</span>
+            </div>
+            <div style={{ padding: 14, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+              <Field label="Desc. %">
+                <input type="number" value={descPct} onChange={e => setDescPct(e.target.value)} style={inputStyle} />
+              </Field>
+              <Field label="Desc. $ fijo">
+                <input type="number" value={descMonto} onChange={e => setDescMonto(e.target.value)} style={inputStyle} />
+              </Field>
+              <Field label="Percepciones">
+                <input type="number" value={percep} onChange={e => setPercep(e.target.value)} style={inputStyle} />
+              </Field>
+            </div>
+            {descTotal > 0 && (
+              <div style={{ margin: '0 14px 14px', background: C.greenDim, border: `1px solid ${C.green}30`, borderRadius: 8, padding: '10px 14px', color: C.green, fontSize: 13, fontWeight: 600 }}>
+                🏷️ Descuento total: − {money(descTotal)}
+              </div>
+            )}
+          </div>
+
+          {/* Totales */}
+          <div style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <TotalRow label="Subtotal" value={subtotal} />
+            {descTotal > 0 && <TotalRow label={`Descuento (${descPct}%)`} value={-descTotal} color={C.green} />}
+            {num(percep) > 0 && <TotalRow label="Percepciones" value={num(percep)} />}
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: C.textMuted, fontWeight: 700, fontSize: 13 }}>TOTAL</span>
+              <span style={{ color: C.accent, fontSize: 28, fontWeight: 800, fontFamily: "'Space Mono', monospace" }}>{money(total)}</span>
+            </div>
+          </div>
+
+          {errMsg && (
+            <div style={{ background: C.redDim, border: `1px solid ${C.red}30`, borderRadius: 10, padding: '12px 16px', color: C.red, fontSize: 13, fontWeight: 600 }}>
+              ⚠️ {errMsg}
+            </div>
+          )}
+        </div>
+
+        {/* Footer fijo con botones */}
+        <footer style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: C.header, borderTop: `1px solid ${C.headerBorder}`, padding: '10px 14px', display: 'flex', gap: 10, zIndex: 100 }}>
+          <button onClick={() => guardar(false)} disabled={saving || saved}
+            style={{ flex: 1, background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}`, borderRadius: 9, padding: '13px', fontSize: 14, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer' }}>
+            {saving ? '...' : '💾 Guardar'}
+          </button>
+          <button onClick={() => guardar(true)} disabled={saving || saved}
+            style={{ flex: 2, background: saving || saved ? C.surfaceAlt : C.accent, color: saving || saved ? C.textMuted : '#000', border: 'none', borderRadius: 9, padding: '13px', fontSize: 14, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer' }}>
+            {saved ? '✓ Guardado' : saving ? 'Guardando...' : '🖨️ Guardar e imprimir'}
+          </button>
+        </footer>
+
+        {/* Modal nuevo cliente - bottom sheet en mobile */}
+        {nuevoCli && (
+          <div onClick={() => setNuevoCli(false)} style={{ position: 'fixed', inset: 0, background: '#000C', zIndex: 4000, display: 'flex', alignItems: 'flex-end' }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '16px 16px 0 0', padding: 24, width: '100%', maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 -12px 48px #000A' }}>
+              <div style={{ width: 40, height: 4, background: C.border, borderRadius: 2, margin: '0 auto 18px' }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+                <h3 style={{ color: C.text, fontSize: 17, fontWeight: 800, margin: 0 }}>Nuevo Cliente</h3>
+                <button onClick={() => setNuevoCli(false)} style={{ background: C.surfaceAlt, border: 'none', color: C.text, width: 34, height: 34, borderRadius: 8, cursor: 'pointer', fontSize: 16 }}>✕</button>
+              </div>
+              <NuevoClienteForm prefill={cliQuery} onClose={() => setNuevoCli(false)}
+                onCreated={(c) => { setClientes(prev => [c, ...prev]); setClienteId(c.id); setCliQuery(''); setCliOpen(false); setNuevoCli(false) }} />
+            </div>
+          </div>
+        )}
+
+        {/* Picker múltiple - bottom sheet en mobile */}
+        {picker && (
+          <div onClick={() => setPicker(null)} style={{ position: 'fixed', inset: 0, background: '#000C', zIndex: 3000, display: 'flex', alignItems: 'flex-end' }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '16px 16px 0 0', padding: 20, width: '100%', maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 -12px 48px #000A' }}>
+              <div style={{ width: 40, height: 4, background: C.border, borderRadius: 2, margin: '0 auto 16px' }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <h3 style={{ color: C.text, fontSize: 16, fontWeight: 800, margin: 0 }}>{picker.matches.length} coincidencias</h3>
+                <button onClick={() => setPicker(null)} style={{ background: C.surfaceAlt, border: 'none', color: C.text, width: 34, height: 34, borderRadius: 8, cursor: 'pointer' }}>✕</button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+                {picker.matches.map(m => (
+                  <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: pickerSel[m.id] ? C.accentDim : C.surfaceAlt, border: `1px solid ${pickerSel[m.id] ? C.accent : C.border}`, borderRadius: 10, padding: '12px 14px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!!pickerSel[m.id]} onChange={e => setPickerSel(s => ({ ...s, [m.id]: e.target.checked }))} style={{ width: 19, height: 19 }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ color: C.text, fontSize: 14, fontWeight: 600 }}>{m.nombre}</div>
+                      <div style={{ color: C.textDim, fontSize: 12 }}>{m.codigo ? `#${m.codigo} · ` : ''}{m.rubro || ''}</div>
+                    </div>
+                    <span style={{ color: C.accent, fontWeight: 700, fontFamily: "'Space Mono', monospace", fontSize: 14 }}>{money(m.precio_ref || 0)}</span>
+                  </label>
+                ))}
+              </div>
+              <button onClick={confirmarPicker} style={{ width: '100%', background: C.accent, color: '#000', border: 'none', borderRadius: 10, padding: '14px', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+                ✓ Agregar {Object.values(pickerSel).filter(Boolean).length || ''} seleccionado(s)
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Desktop layout ────────────────────────────────────────────────
   return (
     <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', flexDirection: 'column', fontFamily: "'Inter', system-ui, sans-serif" }}>
 
