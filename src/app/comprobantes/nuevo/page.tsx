@@ -873,7 +873,7 @@ function NuevoComprobanteInner() {
         }
       }
       const full = await getComprobante(comp.id)
-      setCompGuardado(full)
+      setCompGuardado(full || comp)
       setCompFlags({ recargo: recargoOn || listaGlobal !== null, descContado: descOn })
       setSaved(true)
       setModalPost(true)
@@ -918,7 +918,7 @@ function NuevoComprobanteInner() {
         }
       }
       const full = await getComprobante(comp.id)
-      setCompGuardado(full)
+      setCompGuardado(full || comp)
       setCompFlags({ recargo: recargoOn || listaGlobal !== null, descContado: descOn })
       setSaved(true)
       setModalPago(false)
@@ -1917,7 +1917,7 @@ function NuevoComprobanteInner() {
     </div>
 
       {/* ── MODAL POST-GUARDADO (nivel raíz: visible en móvil y desktop) ── */}
-      {modalPost && compGuardado && (
+      {modalPost && (
         <div style={{ position: 'fixed', inset: 0, background: '#000D', zIndex: 5000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
           <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '16px 16px 0 0', padding: '24px 20px', width: '100%', maxWidth: 480, boxShadow: '0 -12px 48px #000C', display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ width: 40, height: 4, background: C.border, borderRadius: 2, margin: '0 auto 4px' }} />
@@ -1925,16 +1925,16 @@ function NuevoComprobanteInner() {
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 40, marginBottom: 6 }}>✅</div>
               <div style={{ color: C.text, fontSize: 17, fontWeight: 800 }}>
-                {TIPOS[compGuardado.tipo as TipoComprobante]?.label} guardado
+                {TIPOS[(compGuardado?.tipo || tipo) as TipoComprobante]?.label} guardado
               </div>
               <div style={{ color: C.textMuted, fontSize: 13, marginTop: 4 }}>
-                N° {fmt(compGuardado.punto_venta, compGuardado.numero)} · {money(compGuardado.total)}
+                {compGuardado ? `N° ${fmt(compGuardado.punto_venta, compGuardado.numero)} · ${money(compGuardado.total)}` : money(total)}
               </div>
             </div>
 
             {/* Opciones */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <button onClick={() => exportarPDFComp(compGuardado, empresa, { mostrarEfectivo: compFlags.descContado, mostrarFinanciacion: compFlags.recargo })}
+              <button onClick={() => compGuardado && exportarPDFComp(compGuardado, empresa, { mostrarEfectivo: compFlags.descContado, mostrarFinanciacion: compFlags.recargo })}
                 style={{ display: 'flex', alignItems: 'center', gap: 12, background: C.accentDim, border: `1px solid ${C.accent}50`, borderRadius: 10, padding: '12px 16px', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
                 <span style={{ fontSize: 22 }}>📥</span>
                 <div>
@@ -1943,8 +1943,8 @@ function NuevoComprobanteInner() {
                 </div>
               </button>
 
-              {compGuardado.tipo === 'presupuesto' && (
-                <button onClick={() => exportarImagenComp(compGuardado, empresa, { mostrarEfectivo: compFlags.descContado, mostrarFinanciacion: compFlags.recargo })}
+              {(compGuardado?.tipo || tipo) === 'presupuesto' && (
+                <button onClick={() => compGuardado && exportarImagenComp(compGuardado, empresa, { mostrarEfectivo: compFlags.descContado, mostrarFinanciacion: compFlags.recargo })}
                   style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#7c3aed18', border: '1px solid #7c3aed50', borderRadius: 10, padding: '12px 16px', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
                   <span style={{ fontSize: 22 }}>🖼️</span>
                   <div>
@@ -1954,8 +1954,8 @@ function NuevoComprobanteInner() {
                 </button>
               )}
 
-              {compGuardado.tipo === 'presupuesto' && (
-                <button onClick={() => { copiarMensajeWhatsApp(compGuardado, empresa, { mostrarEfectivo: compFlags.descContado, mostrarFinanciacion: compFlags.recargo }) }}
+              {(compGuardado?.tipo || tipo) === 'presupuesto' && (
+                <button onClick={() => compGuardado && copiarMensajeWhatsApp(compGuardado, empresa, { mostrarEfectivo: compFlags.descContado, mostrarFinanciacion: compFlags.recargo })}
                   style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#16a34a18', border: '1px solid #16a34a50', borderRadius: 10, padding: '12px 16px', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
                   <span style={{ fontSize: 22 }}>💬</span>
                   <div>
@@ -1965,7 +1965,7 @@ function NuevoComprobanteInner() {
                 </button>
               )}
 
-              <button onClick={() => imprimirComp(compGuardado, empresa, { mostrarEfectivo: compFlags.descContado, mostrarFinanciacion: compFlags.recargo })}
+              <button onClick={() => compGuardado && imprimirComp(compGuardado, empresa, { mostrarEfectivo: compFlags.descContado, mostrarFinanciacion: compFlags.recargo })}
                 style={{ display: 'flex', alignItems: 'center', gap: 12, background: C.blueDim, border: `1px solid ${C.blue}50`, borderRadius: 10, padding: '12px 16px', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
                 <span style={{ fontSize: 22 }}>🖨️</span>
                 <div>
@@ -1974,7 +1974,7 @@ function NuevoComprobanteInner() {
                 </div>
               </button>
 
-              <button onClick={() => imprimirComp(compGuardado, empresa, { mostrarEfectivo: compFlags.descContado, mostrarFinanciacion: compFlags.recargo, sinMembrete: true })}
+              <button onClick={() => compGuardado && imprimirComp(compGuardado, empresa, { mostrarEfectivo: compFlags.descContado, mostrarFinanciacion: compFlags.recargo, sinMembrete: true })}
                 style={{ display: 'flex', alignItems: 'center', gap: 12, background: C.blueDim, border: `1px solid ${C.blue}50`, borderRadius: 10, padding: '12px 16px', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
                 <span style={{ fontSize: 22 }}>🖨️</span>
                 <div>
