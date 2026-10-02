@@ -1186,10 +1186,10 @@ function NuevoComprobanteInner() {
                   📒 Suma a cuenta corriente del cliente
                 </div>
               )}
-              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', background: recOn ? C.accentDim : C.surfaceAlt, border: `1px solid ${recOn ? C.accent : C.border}`, borderRadius: 8, padding: '11px 14px' }}>
-                <input type="checkbox" checked={recOn} onChange={e => toggleRec(e.target.checked)} style={{ width: 17, height: 17, cursor: 'pointer' }} />
-                <span style={{ color: recOn ? C.accent : C.textMuted, fontSize: 14, fontWeight: 700 }}>
-                  Recargo {String(recGen).replace('.', ',')}%
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', background: recargoOn ? C.accentDim : C.surfaceAlt, border: `1px solid ${recargoOn ? C.accent : C.border}`, borderRadius: 8, padding: '11px 14px' }}>
+                <input type="checkbox" checked={recargoOn} onChange={e => setRecargoOn(e.target.checked)} style={{ width: 17, height: 17, cursor: 'pointer' }} />
+                <span style={{ color: recargoOn ? C.accent : C.textMuted, fontSize: 14, fontWeight: 700 }}>
+                  Recargo {String(recargoGenPct).replace('.', ',')}%
                 </span>
               </label>
             </div>
