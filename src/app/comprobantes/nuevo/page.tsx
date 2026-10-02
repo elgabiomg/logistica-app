@@ -17,6 +17,7 @@ const logAct = (accion: string, entidad: string, detalle: string, id?: string) =
 const money = (n: number) => '$ ' + Math.round(Math.abs(n)).toLocaleString('es-AR')
 const num = (s: string | number) => parseFloat(String(s).replace(',', '.')) || 0
 const fmt = (pv: number, n: number) => `${String(pv || 1).padStart(4, '0')}-${String(n || 0).padStart(8, '0')}`
+const fmtFecha = (f: string) => { const p = (f || '').split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : f || '' }
 
 const TIPOS: Record<TipoComprobante, { label: string; letra: string; leyenda: string }> = {
   presupuesto:  { label: 'Presupuesto',     letra: 'X',  leyenda: 'Documento no válido como factura' },
@@ -59,6 +60,14 @@ function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { most
   const nx8c         = Math.round((efectivoTot / 8) * (nx8Coef / 100))
   const nx10c        = Math.round((efectivoTot / 10) * (nx10Coef / 100))
 
+  const visa3Tot  = Math.round(lista * (1 - visa3DescPct / 100))
+  const ahorrEfec = lista - efectivoTot
+  const pctEfec   = Math.round(ahorrEfec / lista * 100)
+  const ahorrDeb  = lista - debitoTot
+  const pctDeb    = Math.round(ahorrDeb / lista * 100)
+  const ahorr3c   = lista - visa3Tot
+  const pct3c     = Math.round(ahorr3c / lista * 100)
+
   const mostrarEfectivo     = opts?.mostrarEfectivo     ?? false
   const mostrarFinanciacion = opts?.mostrarFinanciacion ?? false
   const sinMembrete         = opts?.sinMembrete         ?? false
@@ -67,7 +76,7 @@ function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { most
     if (esRemito) return `<tr><td class="c">${i.cantidad}</td><td>${i.codigo || ''}</td><td>${i.detalle}</td></tr>`
     const puEfec = Math.round(i.precio_unitario * (1 - descEfectivoPct / 100))
     const imEfec = Math.round(puEfec * i.cantidad)
-    if (mostrarEfectivo) return `<tr>
+    if (mostrarEfectivo && !esPresupuesto) return `<tr>
         <td class="c">${i.cantidad}</td>
         <td class="c">${i.codigo || ''}</td>
         <td>${i.detalle}</td>
@@ -94,61 +103,112 @@ function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { most
 
   const seccionFinanciacion = esPresupuesto ? `
 
+  <!-- BENEFICIOS -->
+  <div class="beneficios">
+    <div class="beneficio">&#x1F69A; Pagás al recibir, sin adelantos</div>
+    <div class="beneficio">&#x1F4CD; Descargamos donde nos indiques</div>
+  </div>
+
   ${mostrarFinanciacion ? `
-  <!-- MEDIOS DE PAGO -->
-  <div class="mp-wrap">
-    <div class="mp-header">Opciones de pago</div>
-    <div class="mp-resumen" style="grid-template-columns:${mostrarEfectivo ? '1fr 1fr 1fr' : '1fr 1fr'}">
-      <div class="mp-item">
-        <div class="mp-item-lbl">Total lista</div>
-        <div class="mp-item-val" style="color:#bbb;font-size:11px">${money(lista)}</div>
+  <!-- ESCALERA DE PRECIOS -->
+  <div class="escalera">
+    <div class="esc-header">
+      <span class="esc-header-lbl">Precio de lista</span>
+      <span class="esc-header-val">${money(lista)}</span>
+    </div>
+
+    <div class="esc-step esc-step-efec">
+      <div class="esc-meta">
+        <span class="esc-icon">&#x1F4B5;</span>
+        <div>
+          <div class="esc-nombre">EFECTIVO</div>
+          <div class="esc-nota-small">Pagalo al recibir</div>
+        </div>
       </div>
-      ${mostrarEfectivo ? `<div class="mp-item efec-cell">
-        <div class="mp-item-lbl">Contado efectivo</div>
-        <div class="mp-item-val">${money(efectivoTot)}</div>
-      </div>` : ''}
-      <div class="mp-item">
-        <div class="mp-item-lbl">Débito / Transferencia</div>
-        <div class="mp-item-val">${money(debitoTot)}</div>
+      <div class="esc-derecha">
+        <div class="esc-precio">${money(efectivoTot)}</div>
+        <div class="esc-ahorro">Ahorrás ${money(ahorrEfec)} <span class="badge-off">${pctEfec}% OFF</span></div>
       </div>
     </div>
-    <div class="mp-cuotas">
-      <table class="cuotas-tbl">
-        <colgroup><col style="width:108px"/><col/><col/><col/><col/><col/><col/></colgroup>
-        <thead>
-          <tr>
-            <td></td>
-            <th class="cth">3 cuotas</th>
-            <th class="cth">6 cuotas</th>
-            <th class="cth">8 cuotas</th>
-            <th class="cth">9 cuotas</th>
-            <th class="cth">10 cuotas</th>
-            <th class="cth">12 cuotas</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td class="marca-lbl">&#x1F4B3; VISA / Mastercard</td>
-            ${cuota('s/i', visa3c, 3, visa3c * 3)}
-            ${cuota('s/i', visa6c, 6, visa6c * 6)}
-            <td class="cval cvacio">—</td>
-            ${cuota('fija', visa9c, 9, visa9c * 9)}
-            <td class="cval cvacio">—</td>
-            ${cuota('fija', visa12c, 12, visa12c * 12)}
-          </tr>
-          <tr>
-            <td class="marca-lbl">&#x1F538; Naranja X</td>
-            ${cuota('Plan Z', visa3c, 3, visa3c * 3)}
-            ${cuota('s/i', visa6c, 6, visa6c * 6)}
-            ${cuota('fija', nx8c, 8, nx8c * 8)}
-            <td class="cval cvacio">—</td>
-            ${cuota('fija', nx10c, 10, nx10c * 10)}
-            ${cuota('fija', visa12c, 12, visa12c * 12)}
-          </tr>
-        </tbody>
-      </table>
+
+    <div class="esc-step esc-step-debito">
+      <div class="esc-meta">
+        <span class="esc-icon">&#x1F3E6;</span>
+        <div class="esc-nombre">TRANSFERENCIA / DÉBITO</div>
+      </div>
+      <div class="esc-derecha">
+        <div class="esc-precio">${money(debitoTot)}</div>
+        <div class="esc-ahorro">Ahorrás ${money(ahorrDeb)} <span class="badge-off">${pctDeb}% OFF</span></div>
+      </div>
     </div>
-  </div>` : ''}
+
+    <div class="esc-step esc-step-cuota">
+      <div class="esc-meta">
+        <span class="esc-icon">&#x1F4B3;</span>
+        <div>
+          <div class="esc-nombre">3 CUOTAS <span class="badge-si">SIN INTERÉS</span></div>
+        </div>
+      </div>
+      <div class="esc-derecha">
+        <div class="esc-cuota-val">${money(visa3c)} <span class="esc-cadu">c/u</span></div>
+        <div class="esc-cuota-tot">Total ${money(visa3Tot)}</div>
+        <div class="esc-ahorro">Ahorrás ${money(ahorr3c)} <span class="badge-off">${pct3c}% OFF</span></div>
+      </div>
+    </div>
+
+    <div class="esc-step esc-step-cuota">
+      <div class="esc-meta">
+        <span class="esc-icon">&#x1F4B3;</span>
+        <div class="esc-nombre">6 CUOTAS <span class="badge-si">SIN INTERÉS</span></div>
+      </div>
+      <div class="esc-derecha">
+        <div class="esc-cuota-val">${money(visa6c)} <span class="esc-cadu">c/u</span></div>
+        <div class="esc-cuota-tot">Total ${money(lista)} · el precio de lista</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CON INTERÉS -->
+  <div class="ci-wrap">
+    <div class="ci-tit">Otras opciones con interés</div>
+    <table class="ci-tbl">
+      <thead>
+        <tr>
+          <th>Cuotas</th>
+          <th>Por cuota</th>
+          <th>Total</th>
+          <th>Tarjeta</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>9 cuotas</td>
+          <td class="ci-cuota-val">${money(visa9c)}</td>
+          <td><span class="ci-total">${money(visa9c * 9)}</span></td>
+          <td class="ci-tarjeta">Visa / Mastercard</td>
+        </tr>
+        <tr>
+          <td>8 cuotas</td>
+          <td class="ci-cuota-val">${money(nx8c)}</td>
+          <td><span class="ci-total">${money(nx8c * 8)}</span></td>
+          <td class="ci-tarjeta ci-exc">solo Naranja X</td>
+        </tr>
+        <tr>
+          <td>10 cuotas</td>
+          <td class="ci-cuota-val">${money(nx10c)}</td>
+          <td><span class="ci-total">${money(nx10c * 10)}</span></td>
+          <td class="ci-tarjeta ci-exc">solo Naranja X</td>
+        </tr>
+        <tr>
+          <td>12 cuotas</td>
+          <td class="ci-cuota-val">${money(visa12c)}</td>
+          <td><span class="ci-total">${money(visa12c * 12)}</span></td>
+          <td class="ci-tarjeta">Visa / Mastercard / Naranja X</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  ` : ''}
 
   <!-- LEGAL + INFO -->
   <div class="legal-bottom">
@@ -160,7 +220,6 @@ function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { most
     ${e.direccion ? `<span>&#x1F4CC; ${e.direccion}${e.localidad ? ', ' + e.localidad : ''}</span>` : ''}
     ${e.telefono ? `<span>&#x1F4DE; ${e.telefono}</span>` : ''}
     <span>&#x1F556; Lun–Vie 8:30–17:30 &middot; Sáb 8:30–14:00</span>
-    <span>&#x1F69A; Entrega en 3–6 días hábiles una vez abonados los materiales</span>
   </div>
   ` : ''
 
@@ -238,6 +297,46 @@ function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { most
     table.cuotas-tbl tbody tr { border-top: 1px solid #f5f5f5; }
     table.cuotas-tbl tbody tr:first-child { border-top: none; }
 
+    /* ── BENEFICIOS ── */
+    .beneficios { display:flex; gap:24px; justify-content:center; background:#f5f9f5; border:1px solid #d4e8d4; border-radius:8px; padding:9px 18px; margin-top:12px; }
+    .beneficio { font-size:10px; color:#444; }
+
+    /* ── ESCALERA ── */
+    .escalera { margin-top:12px; border:1px solid #e0e0e0; border-radius:8px; overflow:hidden; }
+    .esc-header { display:flex; justify-content:space-between; align-items:center; padding:7px 16px; background:#f7f7f7; border-bottom:1px solid #e8e8e8; }
+    .esc-header-lbl { font-size:8px; text-transform:uppercase; letter-spacing:1px; color:#aaa; font-weight:700; }
+    .esc-header-val { font-size:15px; font-weight:800; color:#ccc; text-decoration:line-through; }
+    .esc-step { display:flex; justify-content:space-between; align-items:center; padding:9px 16px; border-bottom:1px solid #f2f2f2; }
+    .esc-step:last-child { border-bottom:none; }
+    .esc-meta { display:flex; align-items:center; gap:9px; }
+    .esc-icon { font-size:15px; line-height:1; }
+    .esc-nombre { font-size:10.5px; font-weight:800; color:#222; letter-spacing:.2px; }
+    .esc-nota-small { font-size:8px; color:#999; margin-top:2px; }
+    .esc-derecha { text-align:right; }
+    .esc-precio { font-size:19px; font-weight:900; color:#1a1a1a; }
+    .esc-step-efec .esc-precio { color:#2e7d32; }
+    .esc-step-debito .esc-precio { color:#1565c0; }
+    .esc-cuota-val { font-size:19px; font-weight:900; color:#1a1a1a; }
+    .esc-cadu { font-size:10px; font-weight:500; color:#888; }
+    .esc-cuota-tot { font-size:8.5px; color:#aaa; margin-top:1px; }
+    .esc-ahorro { font-size:8.5px; color:#2e7d32; margin-top:2px; font-weight:600; }
+    .badge-off { display:inline-block; background:#2e7d32; color:#fff; font-size:7px; font-weight:700; padding:1px 4px; border-radius:3px; margin-left:3px; vertical-align:middle; }
+    .badge-si { display:inline-block; background:#388e3c; color:#fff; font-size:7px; font-weight:700; padding:1px 6px; border-radius:10px; margin-left:4px; vertical-align:middle; letter-spacing:.3px; }
+
+    /* ── CON INTERÉS ── */
+    .ci-wrap { margin-top:10px; }
+    .ci-tit { font-size:7.5px; text-transform:uppercase; letter-spacing:.8px; color:#bbb; font-weight:700; margin-bottom:4px; }
+    table.ci-tbl { width:100%; border-collapse:collapse; }
+    table.ci-tbl th { font-size:7.5px; color:#ccc; font-weight:600; padding:2px 6px 4px; text-align:center; border-bottom:1px solid #eee; }
+    table.ci-tbl th:first-child { text-align:left; }
+    table.ci-tbl td { font-size:9px; padding:4px 6px; border-bottom:1px solid #f5f5f5; text-align:center; color:#555; }
+    table.ci-tbl td:first-child { text-align:left; }
+    table.ci-tbl tbody tr:last-child td { border-bottom:none; }
+    .ci-cuota-val { font-weight:800; color:#333; }
+    .ci-total { font-size:8px; color:#aaa; }
+    .ci-tarjeta { font-size:8px; color:#aaa; }
+    .ci-exc { font-style:italic; color:#bbb; }
+
     /* ── LEGAL + INFO ── */
     .legal-bottom { margin-top: 14px; padding-top: 8px; border-top: 1px solid #ececec; }
     .legal-bottom p { font-size: 8.5px; color: #aaa; line-height: 1.6; margin-bottom: 1px; }
@@ -265,7 +364,7 @@ function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { most
     </div>
     <div class="hdr-num">
       <div class="num">${fmt(comp.punto_venta, comp.numero)}</div>
-      <div class="fecha"><span class="lbl">FECHA:</span> ${comp.fecha || ''}</div>
+      <div class="fecha"><span class="lbl">FECHA:</span> ${fmtFecha(comp.fecha)}</div>
     </div>
   </div>
 
@@ -292,12 +391,11 @@ function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { most
       ${cl.cuit ? `<div><span class="lbl">CUIT:</span> ${cl.cuit}</div>` : ''}
       ${cl.dni ? `<div><span class="lbl">DNI:</span> ${cl.dni}</div>` : ''}
       ${cl.telefono ? `<div><span class="lbl">Tel:</span> ${cl.telefono}</div>` : ''}
-      <div style="margin-top:3px;font-weight:700">${(comp.condicion_pago || 'CONTADO').toUpperCase()}</div>
+      ${comp.condicion_pago && comp.condicion_pago.toUpperCase() !== 'CONTADO' ? `<div style="margin-top:3px;font-weight:700">${comp.condicion_pago.toUpperCase()}</div>` : ''}
     </div>
     <div style="text-align:right">
       <div><span class="lbl">Vendedor:</span> ${comp.vendedor || ''}</div>
       <div><span class="lbl">IVA:</span> ${cl.condicion_iva || 'Consumidor Final'}</div>
-      ${comp.numero ? `<div><span class="lbl">Comprobante N°:</span> ${comp.numero}</div>` : ''}
     </div>
   </div>
 
@@ -307,9 +405,9 @@ function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { most
         <th class="c" style="width:46px">Cant.</th>
         <th class="c" style="width:72px">Código</th>
         <th>Detalle</th>
-        ${esRemito ? '' : mostrarEfectivo
+        ${esRemito ? '' : (mostrarEfectivo && !esPresupuesto)
           ? `<th class="r efec-th" style="width:100px">P. Unit. contado</th><th class="r efec-th" style="width:110px">Importe contado</th>`
-          : `<th class="r" style="width:100px">P. Unit.</th><th class="r" style="width:110px">Importe</th>`}
+          : `<th class="r" style="width:100px">P. Lista</th><th class="r" style="width:110px">Importe</th>`}
       </tr>
     </thead>
     <tbody>${items.map(fila).join('')}</tbody>
@@ -321,27 +419,10 @@ function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { most
     <div class="firma"><div class="firma-linea">Recibí conforme — Firma y aclaración</div></div>
   </div>
   ` : esPresupuesto ? `
-  <div style="margin-top:14px;display:flex;justify-content:flex-end">
-    <table class="tot">
-      ${mostrarEfectivo ? `
-      <tr>
-        <td>Total lista</td>
-        <td class="r">${money(lista)}</td>
-      </tr>
-      <tr style="color:#2e7d32">
-        <td>Descuento en efectivo</td>
-        <td class="r">− ${money(lista - efectivoTot)}</td>
-      </tr>
-      <tr class="total" style="background:#f1f8e9;color:#2e7d32;border-top:2px solid #a5d6a7">
-        <td>TOTAL CONTADO</td><td class="r">${money(efectivoTot)}</td>
-      </tr>` : `
-      <tr><td>Subtotal:</td><td class="r">${money(comp.subtotal)}</td></tr>
-      ${Number(comp.descuento) > 0 ? `<tr><td>Descuento:</td><td class="r">− ${money(comp.descuento)}</td></tr>` : ''}
-      ${Number(comp.percepciones) > 0 ? `<tr><td>Percepciones:</td><td class="r">${money(comp.percepciones)}</td></tr>` : ''}
-      <tr class="total"><td>TOTAL $</td><td class="r">${money(comp.total)}</td></tr>`}
-    </table>
+  <div style="margin-top:10px;display:flex;justify-content:flex-end;align-items:center;gap:10px;border-top:1px solid #eee;padding-top:8px">
+    <span style="font-size:9px;color:#aaa;text-transform:uppercase;letter-spacing:.5px">Total lista</span>
+    <span style="font-size:15px;font-weight:800;color:#1a1a1a">${money(lista)}</span>
   </div>
-  ${mostrarFinanciacion ? `<div style="text-align:right;margin-top:5px;font-size:8.5px;color:#aaa">Para pago con tarjeta, consultá las opciones abajo ↓</div>` : ''}
   ${seccionFinanciacion}
   ` : `
   <div class="foot">
