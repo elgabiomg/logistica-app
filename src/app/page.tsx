@@ -605,7 +605,7 @@ function PedidosView({pedidos,materiales,onRefresh}:{pedidos:Pedido[];materiales
     if(!seleccionados.size||bulkChanging) return
     setBulkChanging(true)
     try {
-      await Promise.all([...seleccionados].map(id=>updateEstadoPedido(id,estado)))
+      await Promise.all(Array.from(seleccionados).map(id=>updateEstadoPedido(id,estado)))
       setSeleccionados(new Set())
       onRefresh()
     } catch(e){console.error(e)} finally{setBulkChanging(false)}
