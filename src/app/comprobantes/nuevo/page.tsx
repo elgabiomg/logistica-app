@@ -229,11 +229,6 @@ function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { most
     <p>Los valores y bonificaciones por cantidad se contemplan sobre el total de la compra. Las cantidades solicitadas pueden influir en el precio final del material.</p>
     <p><strong>Vigencia del presupuesto: 24 hs corridas.</strong></p>
   </div>
-  <div class="info-footer">
-    ${e.direccion ? `<span>&#x1F4CC; ${e.direccion}${e.localidad ? ', ' + e.localidad : ''}</span>` : ''}
-    ${e.telefono ? `<span>&#x1F4DE; ${e.telefono}</span>` : ''}
-    <span>&#x1F556; Lun–Vie 8:30–17:30 &middot; Sáb 8:30–14:00</span>
-  </div>
   ` : ''
 
   const html = `<!doctype html><html><head><meta charset="utf-8">
