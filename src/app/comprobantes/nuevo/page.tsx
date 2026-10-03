@@ -89,6 +89,19 @@ function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { most
           <div style="font-size:8px;color:#b0b0b0;margin-top:1px">${money(i.importe)}</div>
         </td>
        </tr>`
+    if (esPresupuesto && mostrarFinanciacion) return `<tr>
+        <td class="c">${i.cantidad}</td>
+        <td class="c">${i.codigo || ''}</td>
+        <td>${i.detalle}</td>
+        <td class="r">
+          <div style="font-weight:700;color:#2e7d32">${money(puEfec)}</div>
+          <div style="font-size:8px;color:#b0b0b0;margin-top:1px">${money(i.precio_unitario)}</div>
+        </td>
+        <td class="r">
+          <div style="font-weight:700;color:#2e7d32">${money(imEfec)}</div>
+          <div style="font-size:8px;color:#b0b0b0;margin-top:1px">${money(i.importe)}</div>
+        </td>
+       </tr>`
     return `<tr>
         <td class="c">${i.cantidad}</td>
         <td class="c">${i.codigo || ''}</td>
@@ -407,6 +420,8 @@ function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { most
         <th>Detalle</th>
         ${esRemito ? '' : (mostrarEfectivo && !esPresupuesto)
           ? `<th class="r efec-th" style="width:100px">P. Unit. contado</th><th class="r efec-th" style="width:110px">Importe contado</th>`
+          : (esPresupuesto && mostrarFinanciacion)
+          ? `<th class="r" style="width:100px">P. Efectivo</th><th class="r" style="width:110px">Importe</th>`
           : `<th class="r" style="width:100px">P. Lista</th><th class="r" style="width:110px">Importe</th>`}
       </tr>
     </thead>
@@ -419,9 +434,16 @@ function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { most
     <div class="firma"><div class="firma-linea">Recibí conforme — Firma y aclaración</div></div>
   </div>
   ` : esPresupuesto ? `
-  <div style="margin-top:10px;display:flex;justify-content:flex-end;align-items:center;gap:10px;border-top:1px solid #eee;padding-top:8px">
-    <span style="font-size:9px;color:#aaa;text-transform:uppercase;letter-spacing:.5px">Total lista</span>
-    <span style="font-size:15px;font-weight:800;color:#1a1a1a">${money(lista)}</span>
+  <div style="margin-top:10px;display:flex;justify-content:flex-end;align-items:baseline;gap:10px;border-top:1px solid #eee;padding-top:8px">
+    ${mostrarFinanciacion ? `
+      <span style="font-size:9px;color:#aaa;text-transform:uppercase;letter-spacing:.5px">Lista ${money(lista)}</span>
+      <span style="font-size:9px;color:#aaa;text-transform:uppercase;letter-spacing:.5px">·</span>
+      <span style="font-size:9px;color:#2e7d32;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Efectivo</span>
+      <span style="font-size:15px;font-weight:800;color:#2e7d32">${money(efectivoTot)}</span>
+    ` : `
+      <span style="font-size:9px;color:#aaa;text-transform:uppercase;letter-spacing:.5px">Total lista</span>
+      <span style="font-size:15px;font-weight:800;color:#1a1a1a">${money(lista)}</span>
+    `}
   </div>
   ${seccionFinanciacion}
   ` : `
