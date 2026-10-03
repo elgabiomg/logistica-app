@@ -572,7 +572,7 @@ async function exportarPDFComp(comp: any, empresa: EmpresaConfig | null, opts?: 
 }
 
 // ── Exportación imagen ────────────────────────────────────────────────
-async function exportarImagenComp(comp: any, empresa: EmpresaConfig | null, opts?: { mostrarEfectivo?: boolean; mostrarFinanciacion?: boolean }) {
+async function exportarImagenComp(comp: any, empresa: EmpresaConfig | null, opts?: { mostrarEfectivo?: boolean; mostrarFinanciacion?: boolean; sinMembrete?: boolean }) {
   const t = TIPOS[comp.tipo as TipoComprobante]
   const nombre = comp.cliente_nombre || 'ConsumidorFinal'
   const numero = fmt(comp.punto_venta || 1, comp.numero || 0)
@@ -2031,6 +2031,17 @@ function NuevoComprobanteInner() {
                   <div>
                     <div style={{ color: '#a78bfa', fontWeight: 700, fontSize: 14 }}>Exportar imagen</div>
                     <div style={{ color: C.textMuted, fontSize: 11, marginTop: 1 }}>PNG listo para enviar por WhatsApp</div>
+                  </div>
+                </button>
+              )}
+
+              {(compGuardado?.tipo || tipo) === 'presupuesto' && (
+                <button onClick={() => compGuardado && exportarImagenComp(compGuardado, empresa, { mostrarEfectivo: compFlags.descContado, mostrarFinanciacion: compFlags.recargo, sinMembrete: true })}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#7c3aed18', border: '1px solid #7c3aed50', borderRadius: 10, padding: '12px 16px', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+                  <span style={{ fontSize: 22 }}>🖼️</span>
+                  <div>
+                    <div style={{ color: '#a78bfa', fontWeight: 700, fontSize: 14 }}>Imagen sin membrete</div>
+                    <div style={{ color: C.textMuted, fontSize: 11, marginTop: 1 }}>PNG sin datos de la empresa</div>
                   </div>
                 </button>
               )}
