@@ -443,7 +443,7 @@ function generarHTMLComp(comp: any, empresa: EmpresaConfig | null, opts?: { most
   ${seccionFinanciacion}
   ` : `
   <div class="foot">
-    <div class="legal"><p>La entrega de los materiales se realiza en el plazo de 3-6 días hábiles.</p></div>
+
     <table class="tot">
       <tr><td>Subtotal:</td><td class="r">${money(comp.subtotal)}</td></tr>
       ${Number(comp.descuento) > 0 ? `<tr><td>Descuento:</td><td class="r">− ${money(comp.descuento)}</td></tr>` : ''}
@@ -668,7 +668,7 @@ ${detalleLista}
 ${secEfectivo}${secTarjetas}
 📌 ${e.direccion || ''}${e.localidad ? ', ' + e.localidad : ''}
 🕖 Lun–Vie 8:30–17:30 · Sáb 8:30–14:00
-🚚 Entrega en 3–6 días hábiles una vez abonados los materiales
+
 
 _Cualquier consulta, estamos a disposición._`
 
