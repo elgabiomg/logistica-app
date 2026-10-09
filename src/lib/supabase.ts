@@ -412,6 +412,7 @@ export interface JornadaComprobante {
   obs_entrega?: string | null; foto_remito_url?: string | null; firma_url?: string | null
   monto_cobrado?: number | null; medio_pago_cobro?: string | null
   comision_pct?: number | null; fecha_acreditacion?: string | null; cobro_caja_id?: string | null
+  remito_numero?: number | null
   created_at: string
   comprobantes?: Comprobante
 }
@@ -508,6 +509,26 @@ export const registrarCobroJornada = async (
     fecha_acreditacion: fechaAcreditacion ?? null,
     cobro_caja_id: cajaId ?? null
   })
+}
+
+export const generarRemitoNumero = async (jornadaId: string, comprobanteId: string): Promise<number> => {
+  const c = getClient()
+  const { data } = await c.from('jornada_comprobantes')
+    .select('remito_numero').not('remito_numero', 'is', null)
+    .order('remito_numero', { ascending: false }).limit(1)
+  const siguiente = ((data?.[0]?.remito_numero) || 0) + 1
+  await c.from('jornada_comprobantes').update({ remito_numero: siguiente })
+    .eq('jornada_id', jornadaId).eq('comprobante_id', comprobanteId)
+  return siguiente
+}
+
+export const convertirPresupuestoAFacturaX = async (comprobanteId: string): Promise<Comprobante> => {
+  const c = getClient()
+  const numero = await proximoNumero('factura_x')
+  const { data, error } = await c.from('comprobantes')
+    .update({ tipo: 'factura_x', numero }).eq('id', comprobanteId).select().single()
+  if (error) throw error
+  return data as Comprobante
 }
 
 export const getJornadaDeComprobante = async (comprobanteId: string): Promise<{ jornada_id: string; estado: EstadoJornada } | null> => {

@@ -61,11 +61,6 @@ CREATE TABLE IF NOT EXISTS jornada_comprobantes (
   UNIQUE (jornada_id, comprobante_id)
 );
 
--- Un comprobante solo puede estar en una jornada activa/planificada a la vez
-CREATE UNIQUE INDEX IF NOT EXISTS idx_jornada_comp_activa
-  ON jornada_comprobantes (comprobante_id)
-  WHERE (SELECT estado FROM jornadas WHERE id = jornada_id) IN ('planificada', 'activa');
-
 -- Índices
 CREATE INDEX IF NOT EXISTS idx_jornadas_fecha       ON jornadas(fecha);
 CREATE INDEX IF NOT EXISTS idx_jornadas_estado      ON jornadas(estado);

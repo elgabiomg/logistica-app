@@ -1,14 +1,14 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   getJornadas, getJornada, createJornada, updateJornada,
   agregarComprobantesAJornada, quitarComprobanteDeJornada,
   reordenarJornada, updateJornadaComprobante, registrarCobroJornada,
-  getComprobantes, getEmpresa,
+  generarRemitoNumero, convertirPresupuestoAFacturaX,
+  getComprobantes, getEmpresa, supabase,
   type Jornada, type JornadaComprobante, type Comprobante, type EmpresaConfig
 } from '@/lib/supabase'
 
-// ── Colores ──────────────────────────────────────────────────────────────────
 const C = {
   bg: '#0F1117', surface: '#1A1D2E', surfaceAlt: '#232640',
   border: '#2A2D45', text: '#E8EAF6', textMuted: '#6B7280',
@@ -33,6 +33,68 @@ const PASOS: { id: Paso; label: string; icon: string }[] = [
 
 const MEDIOS_COBRO = ['efectivo', 'transferencia', 'débito', 'crédito', 'qr']
 
+// ── Componente canvas de firma ──────────────────────────────────────────────
+function FirmaCanvas({ onFirma }: { onFirma: (dataUrl: string | null) => void }) {
+  const ref = useRef<HTMLCanvasElement>(null)
+  const drawing = useRef(false)
+  const hasFirma = useRef(false)
+
+  const getPos = (e: React.MouseEvent | React.TouchEvent, canvas: HTMLCanvasElement) => {
+    const rect = canvas.getBoundingClientRect()
+    const src = 'touches' in e ? (e as React.TouchEvent).touches[0] : (e as React.MouseEvent)
+    return { x: (src.clientX - rect.left) * (canvas.width / rect.width), y: (src.clientY - rect.top) * (canvas.height / rect.height) }
+  }
+
+  const start = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault()
+    const canvas = ref.current; if (!canvas) return
+    const ctx = canvas.getContext('2d')!
+    const p = getPos(e, canvas)
+    ctx.beginPath(); ctx.moveTo(p.x, p.y)
+    drawing.current = true
+  }
+
+  const move = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault()
+    if (!drawing.current) return
+    const canvas = ref.current; if (!canvas) return
+    const ctx = canvas.getContext('2d')!
+    const p = getPos(e, canvas)
+    ctx.lineTo(p.x, p.y)
+    ctx.strokeStyle = '#E8EAF6'; ctx.lineWidth = 2; ctx.lineCap = 'round'
+    ctx.stroke()
+    hasFirma.current = true
+  }
+
+  const stop = () => {
+    drawing.current = false
+    if (hasFirma.current && ref.current) onFirma(ref.current.toDataURL('image/png'))
+  }
+
+  const limpiar = () => {
+    const canvas = ref.current; if (!canvas) return
+    canvas.getContext('2d')!.clearRect(0, 0, canvas.width, canvas.height)
+    hasFirma.current = false
+    onFirma(null)
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>Firma del receptor</label>
+        <button onClick={limpiar} style={{ background: 'transparent', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: 11 }}>Limpiar</button>
+      </div>
+      <canvas
+        ref={ref} width={340} height={100}
+        onMouseDown={start} onMouseMove={move} onMouseUp={stop} onMouseLeave={stop}
+        onTouchStart={start} onTouchMove={move} onTouchEnd={stop}
+        style={{ width: '100%', height: 100, background: C.surfaceAlt, borderRadius: 8, border: `1px solid ${C.border}`, cursor: 'crosshair', touchAction: 'none', display: 'block' }}
+      />
+      <div style={{ fontSize: 10, color: C.textMuted, marginTop: 3 }}>Dibujá la firma con el dedo o el mouse</div>
+    </div>
+  )
+}
+
 export default function JornadaPage() {
   const [empresa, setEmpresa] = useState<EmpresaConfig | null>(null)
   const [jornadas, setJornadas] = useState<Jornada[]>([])
@@ -41,18 +103,26 @@ export default function JornadaPage() {
   const [loading, setLoading] = useState(true)
   const [guardando, setGuardando] = useState(false)
 
-  // Para planificar: selector de comprobantes
   const [comprobantesDisp, setComprobantesDisp] = useState<Comprobante[]>([])
   const [selComp, setSelComp] = useState<Set<string>>(new Set())
   const [fechaNueva, setFechaNueva] = useState(new Date().toISOString().slice(0, 10))
   const [creandoJornada, setCreandoJornada] = useState(false)
 
-  // Para repartir: modal de cobro
+  // Modal cobro/entrega
   const [modalCobro, setModalCobro] = useState<JornadaComprobante | null>(null)
   const [cobMonto, setCobMonto] = useState('')
   const [cobMedio, setCobMedio] = useState('efectivo')
+  const [cobNombreReceptor, setCobNombreReceptor] = useState('')
+  const [cobDni, setCobDni] = useState('')
+  const [cobObs, setCobObs] = useState('')
+  const [firmaDataUrl, setFirmaDataUrl] = useState<string | null>(null)
+  const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number } | null>(null)
+  const [obteniendoGPS, setObteniendoGPS] = useState(false)
 
-  // Para cerrar: orden drag & drop (simplificado con botones)
+  // Modal conversión a Factura X
+  const [modalConvertir, setModalConvertir] = useState<{ presupuestos: Comprobante[]; resto: string[] } | null>(null)
+  const [convirtiendo, setConvirtiendo] = useState(false)
+
   const [orden, setOrden] = useState<string[]>([])
 
   const cargarDatos = useCallback(async () => {
@@ -61,7 +131,6 @@ export default function JornadaPage() {
       const [emp, lista] = await Promise.all([getEmpresa(), getJornadas(20)])
       setEmpresa(emp)
       setJornadas(lista)
-      // Activar la jornada más reciente no cerrada, si existe
       const activa = lista.find(j => j.estado !== 'cerrada')
       if (activa) {
         const detalle = await getJornada(activa.id)
@@ -82,10 +151,8 @@ export default function JornadaPage() {
     setPaso('planificar')
   }
 
-  // Cargar comprobantes disponibles (pendientes / factura_x sin jornada activa)
   const abrirPlanificar = async () => {
     const todos = await getComprobantes(undefined, 200)
-    // Mostrar presupuestos y facturas_x que no están en esta jornada
     const enJornada = new Set((jornadaActiva?.jornada_comprobantes || []).map(jc => jc.comprobante_id))
     setComprobantesDisp(todos.filter(c =>
       (c.tipo === 'presupuesto' || c.tipo === 'factura_x') && !enJornada.has(c.id)
@@ -105,16 +172,37 @@ export default function JornadaPage() {
     } finally { setGuardando(false) }
   }
 
-  const agregarSeleccionados = async () => {
+  // Agregar comprobantes: si hay presupuestos, preguntar si convertir a Factura X
+  const iniciarAgregarSeleccionados = async () => {
     if (!jornadaActiva || !selComp.size) return
+    const selArr = Array.from(selComp)
+    const presupuestos = comprobantesDisp.filter(c => selArr.includes(c.id) && c.tipo === 'presupuesto')
+    const resto = selArr.filter(id => !presupuestos.find(p => p.id === id))
+    if (presupuestos.length > 0) {
+      setModalConvertir({ presupuestos, resto })
+    } else {
+      await ejecutarAgregar(selArr, false)
+    }
+  }
+
+  const ejecutarAgregar = async (ids: string[], convertir: boolean) => {
+    if (!jornadaActiva) return
     setGuardando(true)
     try {
-      await agregarComprobantesAJornada(jornadaActiva.id, Array.from(selComp))
+      let idsFinales = ids
+      if (convertir && modalConvertir) {
+        const convertidos = await Promise.all(
+          modalConvertir.presupuestos.map(p => convertirPresupuestoAFacturaX(p.id))
+        )
+        idsFinales = [...modalConvertir.resto, ...convertidos.map(c => c.id)]
+      }
+      await agregarComprobantesAJornada(jornadaActiva.id, idsFinales)
       const detalle = await getJornada(jornadaActiva.id)
       setJornadaActiva(detalle)
       setOrden((detalle.jornada_comprobantes || [])
         .sort((a, b) => a.orden - b.orden).map(jc => jc.comprobante_id))
       setSelComp(new Set())
+      setModalConvertir(null)
     } finally { setGuardando(false) }
   }
 
@@ -152,6 +240,20 @@ export default function JornadaPage() {
     setModalCobro(jc)
     setCobMonto(jc.monto_cobrado ? String(jc.monto_cobrado) : String((jc.comprobantes as any)?.total || ''))
     setCobMedio(jc.medio_pago_cobro || 'efectivo')
+    setCobNombreReceptor(jc.nombre_receptor || '')
+    setCobDni(jc.dni_receptor || '')
+    setCobObs(jc.obs_entrega || '')
+    setFirmaDataUrl(null)
+    setGpsCoords(null)
+  }
+
+  const obtenerGPS = () => {
+    setObteniendoGPS(true)
+    navigator.geolocation.getCurrentPosition(
+      pos => { setGpsCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setObteniendoGPS(false) },
+      () => { alert('No se pudo obtener la ubicación'); setObteniendoGPS(false) },
+      { timeout: 10000 }
+    )
   }
 
   const guardarCobro = async () => {
@@ -160,11 +262,39 @@ export default function JornadaPage() {
     try {
       const comp = modalCobro.comprobantes as any
       const nombre = comp?.cliente_nombre || 'Cliente'
-      await registrarCobroJornada(
-        jornadaActiva.id, modalCobro.comprobante_id,
-        Number(cobMonto), cobMedio, nombre
-      )
-      await toggleCheck(modalCobro.comprobante_id, 'entregado', true)
+
+      // Subir firma si hay
+      let firma_url: string | null = modalCobro.firma_url || null
+      if (firmaDataUrl) {
+        const blob = await fetch(firmaDataUrl).then(r => r.blob())
+        const path = `firmas/${jornadaActiva.id}/${modalCobro.comprobante_id}.png`
+        const { error: uploadErr } = await (supabase as any).storage.from('empresa').upload(path, blob, { upsert: true, contentType: 'image/png' })
+        if (!uploadErr) {
+          const { data: urlData } = (supabase as any).storage.from('empresa').getPublicUrl(path)
+          firma_url = urlData?.publicUrl || null
+        }
+      }
+
+      // Registrar cobro
+      await registrarCobroJornada(jornadaActiva.id, modalCobro.comprobante_id, Number(cobMonto), cobMedio, nombre)
+
+      // Guardar datos de entrega
+      await updateJornadaComprobante(jornadaActiva.id, modalCobro.comprobante_id, {
+        entregado: true,
+        fecha_entrega_real: new Date().toISOString(),
+        gps_lat: gpsCoords?.lat ?? null,
+        gps_lng: gpsCoords?.lng ?? null,
+        nombre_receptor: cobNombreReceptor || null,
+        dni_receptor: cobDni || null,
+        obs_entrega: cobObs || null,
+        firma_url,
+      })
+
+      // Generar número de remito
+      await generarRemitoNumero(jornadaActiva.id, modalCobro.comprobante_id)
+
+      const detalle = await getJornada(jornadaActiva.id)
+      setJornadaActiva(detalle)
       setModalCobro(null)
     } finally { setGuardando(false) }
   }
@@ -182,10 +312,8 @@ export default function JornadaPage() {
 
   const jcs = (jornadaActiva?.jornada_comprobantes || [])
     .sort((a, b) => a.orden - b.orden)
-
   const jcsPorId = new Map(jcs.map(jc => [jc.comprobante_id, jc]))
 
-  // ─── Render ───────────────────────────────────────────────────────────────
   if (loading) return (
     <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textMuted }}>
       Cargando...
@@ -209,7 +337,7 @@ export default function JornadaPage() {
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '20px 16px' }}>
 
-        {/* Sin jornada activa: lista de jornadas + botón crear */}
+        {/* ── Lista de jornadas ── */}
         {!jornadaActiva ? (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -264,9 +392,8 @@ export default function JornadaPage() {
             )}
           </div>
         ) : (
-          /* Jornada abierta: tabs de pasos */
+          /* ── Jornada abierta ── */
           <div>
-            {/* Volver a lista */}
             <button onClick={() => setJornadaActiva(null)}
               style={{ background: 'transparent', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: 13, marginBottom: 12, padding: 0 }}>
               ← Todas las jornadas
@@ -287,19 +414,17 @@ export default function JornadaPage() {
               ))}
             </div>
 
-            {/* ── PASO: PLANIFICAR ── */}
+            {/* ── PLANIFICAR ── */}
             {paso === 'planificar' && (
               <div>
                 <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>
                   Pedidos en la jornada ({jcs.length})
                 </div>
-
                 {jcs.length === 0 && (
                   <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 16 }}>
                     Todavía no hay pedidos. Agregá abajo.
                   </div>
                 )}
-
                 {jcs.map(jc => {
                   const comp = jc.comprobantes as any
                   return (
@@ -340,11 +465,16 @@ export default function JornadaPage() {
                                 {c.tipo?.toUpperCase()} N° {String(c.numero).padStart(8, '0')} · {money(c.total)}
                               </div>
                             </div>
+                            {c.tipo === 'presupuesto' && (
+                              <span style={{ fontSize: 10, background: C.yellowDim, color: C.yellow, borderRadius: 4, padding: '2px 6px', fontWeight: 700 }}>
+                                PRESUP.
+                              </span>
+                            )}
                           </label>
                         ))}
                       </div>
                       {selComp.size > 0 && (
-                        <button onClick={agregarSeleccionados} disabled={guardando}
+                        <button onClick={iniciarAgregarSeleccionados} disabled={guardando}
                           style={{ marginTop: 10, background: C.accent, color: '#000', fontWeight: 700, border: 'none', borderRadius: 7, padding: '9px 20px', cursor: 'pointer', width: '100%' }}>
                           {guardando ? '...' : `Agregar ${selComp.size} comprobante${selComp.size > 1 ? 's' : ''}`}
                         </button>
@@ -355,7 +485,7 @@ export default function JornadaPage() {
               </div>
             )}
 
-            {/* ── PASO: COMPRAR ── */}
+            {/* ── COMPRAR ── */}
             {paso === 'comprar' && (
               <div>
                 <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Lista de compras</div>
@@ -363,7 +493,6 @@ export default function JornadaPage() {
                   <div style={{ color: C.textMuted }}>Primero agregá pedidos en el paso Planificar.</div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {/* Agrupar ítems por proveedor */}
                     {(() => {
                       const porProv: Record<string, { proveedor: string; items: any[] }> = {}
                       jcs.forEach(jc => {
@@ -401,7 +530,7 @@ export default function JornadaPage() {
               </div>
             )}
 
-            {/* ── PASO: CARGAR ── */}
+            {/* ── CARGAR ── */}
             {paso === 'cargar' && (
               <div>
                 <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Control de carga por pedido</div>
@@ -430,7 +559,7 @@ export default function JornadaPage() {
               </div>
             )}
 
-            {/* ── PASO: REPARTIR ── */}
+            {/* ── REPARTIR ── */}
             {paso === 'repartir' && (
               <div>
                 <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Hoja de ruta</div>
@@ -448,7 +577,6 @@ export default function JornadaPage() {
                       border: `1px solid ${jc.entregado ? C.green : C.border}`,
                       borderRadius: 10, padding: '12px 14px', marginBottom: 10
                     }}>
-                      {/* Cabecera parada */}
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                         <div style={{ background: C.accent, color: '#000', borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, flexShrink: 0 }}>
                           {idx + 1}
@@ -461,7 +589,6 @@ export default function JornadaPage() {
                             {money(comp?.total || 0)} · {comp?.condicion_pago || ''}
                           </div>
                         </div>
-                        {/* Flechas de orden */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                           <button onClick={() => moverOrden(compId, -1)} disabled={idx === 0}
                             style={{ background: C.surfaceAlt, border: 'none', borderRadius: 4, cursor: 'pointer', color: C.text, fontSize: 12, padding: '2px 6px', opacity: idx === 0 ? 0.3 : 1 }}>▲</button>
@@ -470,7 +597,6 @@ export default function JornadaPage() {
                         </div>
                       </div>
 
-                      {/* Ítems */}
                       <div style={{ paddingLeft: 32, marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
                         {(comp?.comprobante_items || []).slice(0, 4).map((it: any, i: number) => (
                           <div key={i} style={{ fontSize: 11, color: C.textMuted }}>· {it.cantidad} {it.detalle}</div>
@@ -480,13 +606,20 @@ export default function JornadaPage() {
                         )}
                       </div>
 
-                      {/* Estado y cobro */}
-                      <div style={{ paddingLeft: 32, marginTop: 10, display: 'flex', gap: 8 }}>
+                      <div style={{ paddingLeft: 32, marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         {jc.entregado ? (
-                          <div style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>
-                            ✓ Entregado
-                            {jc.monto_cobrado && ` · Cobrado ${money(jc.monto_cobrado)} (${jc.medio_pago_cobro})`}
-                          </div>
+                          <>
+                            <div style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>
+                              ✓ Entregado
+                              {jc.monto_cobrado && ` · ${money(jc.monto_cobrado)} (${jc.medio_pago_cobro})`}
+                            </div>
+                            {jc.remito_numero && (
+                              <a href={`/remito/${jc.id}`} target="_blank" rel="noopener noreferrer"
+                                style={{ fontSize: 12, color: C.blue, fontWeight: 700, textDecoration: 'none', marginLeft: 8 }}>
+                                🖨️ Remito N° {String(jc.remito_numero).padStart(4, '0')}
+                              </a>
+                            )}
+                          </>
                         ) : (
                           <button onClick={() => abrirModalCobro(jc)}
                             style={{ background: C.greenDim, border: `1px solid ${C.green}50`, color: C.green, borderRadius: 7, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>
@@ -500,12 +633,11 @@ export default function JornadaPage() {
               </div>
             )}
 
-            {/* ── PASO: CERRAR ── */}
+            {/* ── CERRAR ── */}
             {paso === 'cerrar' && (
               <div>
                 <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Resumen de la jornada</div>
 
-                {/* Totales por medio de pago */}
                 {(() => {
                   const totales: Record<string, number> = {}
                   let totalCobrado = 0; let entregados = 0; let noEntregados = 0
@@ -549,11 +681,31 @@ export default function JornadaPage() {
                           ))}
                         </div>
                       )}
+
+                      {/* Remitos de la jornada */}
+                      {jcs.some(jc => jc.remito_numero) && (
+                        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', marginBottom: 20 }}>
+                          <div style={{ padding: '10px 14px', background: C.surfaceAlt, fontWeight: 700, fontSize: 13, borderBottom: `1px solid ${C.border}` }}>
+                            Remitos generados
+                          </div>
+                          {jcs.filter(jc => jc.remito_numero).map(jc => {
+                            const comp = jc.comprobantes as any
+                            return (
+                              <div key={jc.id} style={{ padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${C.border}` }}>
+                                <span style={{ fontSize: 13 }}>{comp?.cliente_nombre}</span>
+                                <a href={`/remito/${jc.id}`} target="_blank" rel="noopener noreferrer"
+                                  style={{ fontSize: 12, color: C.blue, textDecoration: 'none', fontWeight: 700 }}>
+                                  🖨️ Remito {String(jc.remito_numero).padStart(4, '0')}
+                                </a>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
                     </>
                   )
                 })()}
 
-                {/* No entregados */}
                 {jcs.filter(jc => !jc.entregado).length > 0 && (
                   <div style={{ background: C.yellowDim, border: `1px solid ${C.yellow}40`, borderRadius: 10, padding: 14, marginBottom: 16 }}>
                     <div style={{ fontWeight: 700, fontSize: 13, color: C.yellow, marginBottom: 8 }}>⚠️ No entregados — vuelven a pendientes</div>
@@ -578,23 +730,25 @@ export default function JornadaPage() {
         )}
       </div>
 
-      {/* ── Modal cobro ── */}
+      {/* ── Modal: Registrar entrega y cobro ── */}
       {modalCobro && (
-        <div style={{ position: 'fixed', inset: 0, background: '#000a', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999, padding: 20 }}>
-          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: 24, width: '100%', maxWidth: 400 }}>
-            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Registrar entrega y cobro</div>
-            <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 20 }}>
+        <div style={{ position: 'fixed', inset: 0, background: '#000b', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 999, padding: 0 }}>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '14px 14px 0 0', padding: 20, width: '100%', maxWidth: 500, maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 2 }}>Registrar entrega y cobro</div>
+            <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 16 }}>
               {(modalCobro.comprobantes as any)?.cliente_nombre}
             </div>
 
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 12, color: C.textMuted, display: 'block', marginBottom: 4 }}>Monto cobrado</label>
+            {/* Monto */}
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, color: C.textMuted, display: 'block', marginBottom: 4, fontWeight: 600 }}>Monto cobrado</label>
               <input type="number" value={cobMonto} onChange={e => setCobMonto(e.target.value)}
-                style={{ width: '100%', background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 7, color: C.text, padding: '10px 12px', fontSize: 16, fontWeight: 700, boxSizing: 'border-box' }} />
+                style={{ width: '100%', background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 7, color: C.text, padding: '10px 12px', fontSize: 18, fontWeight: 700, boxSizing: 'border-box' }} />
             </div>
 
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, color: C.textMuted, display: 'block', marginBottom: 4 }}>Medio de pago</label>
+            {/* Medio de pago */}
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, color: C.textMuted, display: 'block', marginBottom: 6, fontWeight: 600 }}>Medio de pago</label>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {MEDIOS_COBRO.map(m => (
                   <button key={m} onClick={() => setCobMedio(m)}
@@ -603,6 +757,43 @@ export default function JornadaPage() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Receptor */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+              <div>
+                <label style={{ fontSize: 12, color: C.textMuted, display: 'block', marginBottom: 4, fontWeight: 600 }}>Nombre receptor</label>
+                <input value={cobNombreReceptor} onChange={e => setCobNombreReceptor(e.target.value)} placeholder="Opcional"
+                  style={{ width: '100%', background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 7, color: C.text, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: C.textMuted, display: 'block', marginBottom: 4, fontWeight: 600 }}>DNI</label>
+                <input value={cobDni} onChange={e => setCobDni(e.target.value)} placeholder="Opcional"
+                  style={{ width: '100%', background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 7, color: C.text, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+              </div>
+            </div>
+
+            {/* Observaciones */}
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, color: C.textMuted, display: 'block', marginBottom: 4, fontWeight: 600 }}>Observaciones</label>
+              <input value={cobObs} onChange={e => setCobObs(e.target.value)} placeholder="Opcional"
+                style={{ width: '100%', background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 7, color: C.text, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+            </div>
+
+            {/* GPS */}
+            <div style={{ marginBottom: 12 }}>
+              <button onClick={obtenerGPS} disabled={obteniendoGPS}
+                style={{ background: gpsCoords ? C.greenDim : C.surfaceAlt, border: `1px solid ${gpsCoords ? C.green : C.border}`, borderRadius: 7, color: gpsCoords ? C.green : C.textMuted, padding: '8px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                {obteniendoGPS ? '📡 Obteniendo...' : gpsCoords ? `📍 ${gpsCoords.lat.toFixed(4)}, ${gpsCoords.lng.toFixed(4)}` : '📍 Capturar ubicación GPS'}
+              </button>
+            </div>
+
+            {/* Firma */}
+            <div style={{ marginBottom: 16 }}>
+              <FirmaCanvas onFirma={setFirmaDataUrl} />
+              {firmaDataUrl && (
+                <div style={{ marginTop: 4, fontSize: 11, color: C.green }}>✓ Firma capturada</div>
+              )}
             </div>
 
             <div style={{ display: 'flex', gap: 10 }}>
@@ -615,6 +806,42 @@ export default function JornadaPage() {
                 {guardando ? '...' : '✓ Confirmar entrega'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Convertir presupuestos a Factura X ── */}
+      {modalConvertir && (
+        <div style={{ position: 'fixed', inset: 0, background: '#000b', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999, padding: 20 }}>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: 24, width: '100%', maxWidth: 400 }}>
+            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>⚡ Convertir a Factura X</div>
+            <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 16 }}>
+              {modalConvertir.presupuestos.length === 1
+                ? 'El siguiente presupuesto será convertido a Factura X:'
+                : `Los siguientes ${modalConvertir.presupuestos.length} presupuestos serán convertidos a Factura X:`}
+            </div>
+            {modalConvertir.presupuestos.map(p => (
+              <div key={p.id} style={{ background: C.surfaceAlt, borderRadius: 8, padding: '8px 12px', marginBottom: 6, fontSize: 13 }}>
+                <strong>{p.cliente_nombre}</strong> · {money(p.total)}
+              </div>
+            ))}
+            <div style={{ fontSize: 12, color: C.yellow, marginTop: 12, marginBottom: 16 }}>
+              ⚠️ Esta acción es irreversible desde aquí. El presupuesto pasará a ser Factura X.
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => ejecutarAgregar(Array.from(selComp), false)} disabled={guardando}
+                style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, color: C.textMuted, padding: '10px', cursor: 'pointer', fontSize: 13 }}>
+                Agregar como presupuesto
+              </button>
+              <button onClick={() => ejecutarAgregar(Array.from(selComp), true)} disabled={guardando}
+                style={{ flex: 1, background: C.accent, color: '#000', fontWeight: 800, border: 'none', borderRadius: 8, padding: '10px', cursor: 'pointer', fontSize: 13 }}>
+                {guardando ? '...' : 'Convertir y agregar'}
+              </button>
+            </div>
+            <button onClick={() => setModalConvertir(null)}
+              style={{ width: '100%', marginTop: 8, background: 'transparent', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: 13, padding: '6px' }}>
+              Cancelar
+            </button>
           </div>
         </div>
       )}
