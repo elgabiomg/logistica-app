@@ -486,28 +486,46 @@ export default function JornadaPage() {
                           if (!porProv[prov]) porProv[prov] = { proveedor: prov, items: [] }
                           const existing = porProv[prov].items.find((x: any) => x.detalle === it.detalle)
                           if (existing) existing.cantidad += Number(it.cantidad)
-                          else porProv[prov].items.push({ detalle: it.detalle, cantidad: Number(it.cantidad), unidad: it.materiales?.unidad || '' })
+                          else porProv[prov].items.push({ detalle: it.detalle, cantidad: Number(it.cantidad), unidad: it.materiales?.unidad || '', costo: Number(it.materiales?.costo || 0) })
                         })
                       })
-                      return Object.values(porProv).map(g => (
+                      const money = (n: number) => '$ ' + n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+                      return Object.values(porProv).map(g => {
+                        const totalLista = g.items.reduce((s, it) => s + it.cantidad * it.costo, 0)
+                        const totalEfectivo = totalLista * 0.94
+                        return (
                         <div key={g.proveedor} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
-                          <div style={{ padding: '10px 14px', background: C.surfaceAlt, fontWeight: 700, fontSize: 13, borderBottom: `1px solid ${C.border}` }}>
-                            🏪 {g.proveedor}
+                          <div style={{ padding: '10px 14px', background: C.surfaceAlt, fontWeight: 700, fontSize: 13, borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>🏪 {g.proveedor}</span>
                           </div>
                           {g.items.map((it, i) => {
                             const jcWithIt = jcs.find(jc => (jc.comprobantes as any)?.comprobante_items?.some((x: any) => x.detalle === it.detalle))
                             const comprado = jcWithIt?.comprado || false
+                            const subtotal = it.cantidad * it.costo
                             return (
                               <div key={i} style={{ padding: '10px 14px', borderBottom: i < g.items.length - 1 ? `1px solid ${C.border}` : 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
                                 <input type="checkbox" checked={comprado} onChange={e => jcWithIt && toggleCheck(jcWithIt.comprobante_id, 'comprado', e.target.checked)} style={{ width: 18, height: 18 }} />
                                 <div style={{ flex: 1, textDecoration: comprado ? 'line-through' : 'none', color: comprado ? C.textMuted : C.text }}>
                                   <span style={{ fontWeight: 600 }}>{it.cantidad} {it.unidad}</span> · {it.detalle}
                                 </div>
+                                {it.costo > 0 && (
+                                  <div style={{ textAlign: 'right', fontSize: 12, color: C.textMuted, whiteSpace: 'nowrap' }}>
+                                    <div>{money(subtotal)}</div>
+                                    <div style={{ color: '#22c55e', fontSize: 11 }}>c/dto: {money(subtotal * 0.94)}</div>
+                                  </div>
+                                )}
                               </div>
                             )
                           })}
+                          {totalLista > 0 && (
+                            <div style={{ padding: '10px 14px', background: C.surfaceAlt, borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'flex-end', gap: 20, fontSize: 13 }}>
+                              <div style={{ color: C.textMuted }}>Lista: <strong style={{ color: C.text }}>{money(totalLista)}</strong></div>
+                              <div style={{ color: '#22c55e' }}>Efectivo −6%: <strong>{money(totalEfectivo)}</strong></div>
+                            </div>
+                          )}
                         </div>
-                      ))
+                        )
+                      })
                     })()}
                   </div>
                 )}
