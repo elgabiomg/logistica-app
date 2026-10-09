@@ -531,12 +531,59 @@ export const getEgresosJornada = async (fecha: string): Promise<number> => {
 
 export const generarRemitoNumero = async (jornadaId: string, comprobanteId: string): Promise<number> => {
   const c = getClient()
-  const { data } = await c.from('jornada_comprobantes')
+  // Buscar si ya tiene número (idempotente)
+  const { data: existing } = await c.from('jornada_comprobantes')
+    .select('id, remito_numero, comprobantes(*, comprobante_items(*, materiales(unidad, proveedores(nombre))), clientes(*)), jornadas(fecha)')
+    .eq('jornada_id', jornadaId).eq('comprobante_id', comprobanteId).single()
+  if (existing?.remito_numero) return existing.remito_numero
+
+  // Siguiente número correlativo
+  const { data: maxRow } = await c.from('jornada_comprobantes')
     .select('remito_numero').not('remito_numero', 'is', null)
     .order('remito_numero', { ascending: false }).limit(1)
-  const siguiente = ((data?.[0]?.remito_numero) || 0) + 1
+  const siguiente = ((maxRow?.[0]?.remito_numero) || 0) + 1
   await c.from('jornada_comprobantes').update({ remito_numero: siguiente })
     .eq('jornada_id', jornadaId).eq('comprobante_id', comprobanteId)
+
+  // Crear snapshot: leer datos de empresa + jornada_comprobante completo
+  try {
+    const [emp, jcData] = await Promise.all([
+      getEmpresa(),
+      c.from('jornada_comprobantes')
+        .select('*, comprobantes(*, comprobante_items(*, materiales(unidad)), clientes(*))')
+        .eq('id', existing!.id).single()
+    ])
+    const jc = jcData.data as any
+    const comp = jc?.comprobantes
+    const cliente = comp?.clientes || {}
+    const items = (comp?.comprobante_items || []).map((it: any) => ({
+      detalle: it.detalle, cantidad: Number(it.cantidad),
+      unidad: it.materiales?.unidad || '', precio_unitario: Number(it.precio_unitario),
+      importe: Number(it.importe),
+    }))
+    await c.from('remito_snapshots').upsert({
+      jornada_comprobante_id: existing!.id,
+      remito_numero: siguiente,
+      empresa_nombre: emp.nombre, empresa_cuit: emp.cuit,
+      empresa_direccion: emp.direccion, empresa_localidad: emp.localidad,
+      empresa_telefono: emp.telefono, empresa_logo_url: emp.logo_url,
+      empresa_condicion_iva: emp.condicion_iva, prefijo_remito: emp.prefijo_remito || '0001',
+      cliente_nombre: comp?.cliente_nombre, cliente_cuit: cliente.cuit,
+      cliente_direccion: cliente.direccion, cliente_localidad: cliente.localidad,
+      cliente_telefono: cliente.telefono,
+      condicion_pago: comp?.condicion_pago, comp_tipo: comp?.tipo, comp_numero: comp?.numero,
+      items,
+      subtotal: Number(comp?.subtotal || 0), descuento: Number(comp?.descuento || 0),
+      recargo: Number(comp?.recargo || 0), total: Number(comp?.total || 0),
+      monto_cobrado: jc.monto_cobrado, medio_pago_cobro: jc.medio_pago_cobro,
+      nombre_receptor: jc.nombre_receptor, dni_receptor: jc.dni_receptor,
+      obs_entrega: jc.obs_entrega, firma_url: jc.firma_url,
+      foto_remito_url: jc.foto_remito_url,
+      gps_lat: jc.gps_lat, gps_lng: jc.gps_lng,
+      fecha_entrega: jc.fecha_entrega_real,
+    }, { onConflict: 'jornada_comprobante_id' })
+  } catch { /* snapshot falla silenciosamente; el remito_numero ya fue guardado */ }
+
   return siguiente
 }
 
