@@ -4,7 +4,7 @@ import { use } from 'react'
 import { getJornada, getEmpresa, type Jornada, type JornadaComprobante, type EmpresaConfig } from '@/lib/supabase'
 
 const money = (n: number) => '$ ' + Math.round(n).toLocaleString('es-AR')
-const fmtFecha = (d: string) => { const p = d.split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : d }
+const fmtFecha = (d: string) => { const p = (d || '').split('T')[0].split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : d }
 
 export default function HojaRutaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
