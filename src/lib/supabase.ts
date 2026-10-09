@@ -426,7 +426,7 @@ export const getJornadas = async (limit = 50): Promise<Jornada[]> => {
 
 export const getJornada = async (id: string): Promise<Jornada> => {
   const { data, error } = await getClient().from('jornadas')
-    .select('*, jornada_comprobantes(*, comprobantes(*, comprobante_items(*), clientes(*)))')
+    .select('*, jornada_comprobantes(*, comprobantes(*, comprobante_items(*, materiales(*, proveedores(*))), clientes(*)))')
     .eq('id', id).single()
   if (error) throw error
   return data as Jornada

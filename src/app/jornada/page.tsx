@@ -481,7 +481,7 @@ export default function JornadaPage() {
                       const porProv: Record<string, { proveedor: string; items: any[] }> = {}
                       jcs.forEach(jc => {
                         const comp = jc.comprobantes as any
-                        ;(comp?.comprobante_items || []).forEach((it: any) => {
+                        ;(comp?.comprobante_items || []).filter((it: any) => it.material_id && it.materiales?.proveedor_id).forEach((it: any) => {
                           const prov = it.materiales?.proveedores?.nombre || 'Sin proveedor'
                           if (!porProv[prov]) porProv[prov] = { proveedor: prov, items: [] }
                           const existing = porProv[prov].items.find((x: any) => x.detalle === it.detalle)
