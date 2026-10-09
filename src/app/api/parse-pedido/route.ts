@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 
     content.push({
       type: 'text',
-      text: `Analizá ${imagenes.length > 1 ? 'estas imágenes' : 'esta imagen'} de un sistema de gestión (Hornero/Odoo) o WhatsApp.
+      text: `Analizá ${imagenes.length > 1 ? 'estas imágenes' : 'esta imagen'} de un sistema de gestión o WhatsApp.
 
 Extraé TODA la información disponible y organizala así:
 - Datos del cliente: nombre, dirección, localidad, provincia, teléfono, DNI, CUIT

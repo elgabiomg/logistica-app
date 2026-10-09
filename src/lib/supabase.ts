@@ -390,6 +390,132 @@ export interface EmpresaConfig {
   lista1_nombre?: string; lista1_pct?: number
   lista2_nombre?: string; lista2_pct?: number
   lista3_nombre?: string; lista3_pct?: number
+  // Identidad de marca (migración 015)
+  eslogan?: string; whatsapp?: string
+  color_primario?: string; color_secundario?: string
+  prefijo_remito?: string
+}
+
+// ─── JORNADAS DE REPARTO ──────────────────────────────────────────────────────
+export type EstadoJornada = 'planificada' | 'activa' | 'cerrada'
+export interface Jornada {
+  id: string; fecha: string; estado: EstadoJornada; notas?: string
+  created_at: string; updated_at: string
+  jornada_comprobantes?: JornadaComprobante[]
+}
+export interface JornadaComprobante {
+  id: string; jornada_id: string; comprobante_id: string; orden: number
+  comprado: boolean; cargado: boolean
+  entregado: boolean; fecha_entrega_real?: string | null
+  gps_lat?: number | null; gps_lng?: number | null
+  nombre_receptor?: string | null; dni_receptor?: string | null
+  obs_entrega?: string | null; foto_remito_url?: string | null; firma_url?: string | null
+  monto_cobrado?: number | null; medio_pago_cobro?: string | null
+  comision_pct?: number | null; fecha_acreditacion?: string | null; cobro_caja_id?: string | null
+  created_at: string
+  comprobantes?: Comprobante
+}
+
+export const getJornadas = async (limit = 50): Promise<Jornada[]> => {
+  const { data, error } = await getClient().from('jornadas').select('*')
+    .order('fecha', { ascending: false }).limit(limit)
+  if (error) throw error
+  return (data || []) as Jornada[]
+}
+
+export const getJornada = async (id: string): Promise<Jornada> => {
+  const { data, error } = await getClient().from('jornadas')
+    .select('*, jornada_comprobantes(*, comprobantes(*, comprobante_items(*), clientes(*)))')
+    .eq('id', id).single()
+  if (error) throw error
+  return data as Jornada
+}
+
+export const createJornada = async (fecha: string, notas?: string): Promise<Jornada> => {
+  const { data, error } = await getClient().from('jornadas')
+    .insert({ fecha, notas }).select().single()
+  if (error) throw error
+  return data as Jornada
+}
+
+export const updateJornada = async (id: string, updates: Partial<Pick<Jornada, 'estado' | 'notas'>>): Promise<Jornada> => {
+  const { data, error } = await getClient().from('jornadas')
+    .update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id).select().single()
+  if (error) throw error
+  return data as Jornada
+}
+
+export const agregarComprobantesAJornada = async (jornadaId: string, comprobanteIds: string[]): Promise<void> => {
+  const c = getClient()
+  const { data: existing } = await c.from('jornada_comprobantes')
+    .select('comprobante_id').eq('jornada_id', jornadaId)
+  const existingIds = new Set((existing || []).map((r: any) => r.comprobante_id))
+  const nuevos = comprobanteIds.filter(id => !existingIds.has(id))
+  if (!nuevos.length) return
+  const { data: maxOrd } = await c.from('jornada_comprobantes')
+    .select('orden').eq('jornada_id', jornadaId).order('orden', { ascending: false }).limit(1)
+  const baseOrden = (maxOrd?.[0]?.orden ?? -1) + 1
+  const { error } = await c.from('jornada_comprobantes')
+    .insert(nuevos.map((id, i) => ({ jornada_id: jornadaId, comprobante_id: id, orden: baseOrden + i })))
+  if (error) throw error
+}
+
+export const quitarComprobanteDeJornada = async (jornadaId: string, comprobanteId: string): Promise<void> => {
+  const { error } = await getClient().from('jornada_comprobantes')
+    .delete().eq('jornada_id', jornadaId).eq('comprobante_id', comprobanteId)
+  if (error) throw error
+}
+
+export const reordenarJornada = async (jornadaId: string, ordenIds: string[]): Promise<void> => {
+  const c = getClient()
+  for (let i = 0; i < ordenIds.length; i++) {
+    await c.from('jornada_comprobantes').update({ orden: i })
+      .eq('jornada_id', jornadaId).eq('comprobante_id', ordenIds[i])
+  }
+}
+
+export const updateJornadaComprobante = async (
+  jornadaId: string, comprobanteId: string,
+  updates: Partial<Omit<JornadaComprobante, 'id' | 'jornada_id' | 'comprobante_id' | 'created_at'>>
+): Promise<void> => {
+  const { error } = await getClient().from('jornada_comprobantes').update(updates)
+    .eq('jornada_id', jornadaId).eq('comprobante_id', comprobanteId)
+  if (error) throw error
+}
+
+export const registrarCobroJornada = async (
+  jornadaId: string, comprobanteId: string,
+  monto: number, medioPago: string, comprobanteNombre: string,
+  comisionPct?: number, fechaAcreditacion?: string
+): Promise<void> => {
+  const c = getClient()
+  const { data: jc } = await c.from('jornada_comprobantes').select('cobro_caja_id')
+    .eq('jornada_id', jornadaId).eq('comprobante_id', comprobanteId).single()
+  let cajaId = jc?.cobro_caja_id
+  if (cajaId) {
+    await c.from('caja_movimientos').update({ monto, medio_pago: medioPago }).eq('id', cajaId)
+  } else {
+    const { data: mov } = await c.from('caja_movimientos').insert({
+      tipo: 'ingreso', concepto: `Cobro: ${comprobanteNombre}`,
+      monto, medio_pago: medioPago, categoria: 'Ventas contado',
+      comprobante_id: comprobanteId, fecha: new Date().toISOString().slice(0, 10)
+    }).select().single()
+    cajaId = mov?.id
+  }
+  await updateJornadaComprobante(jornadaId, comprobanteId, {
+    monto_cobrado: monto, medio_pago_cobro: medioPago,
+    comision_pct: comisionPct ?? null,
+    fecha_acreditacion: fechaAcreditacion ?? null,
+    cobro_caja_id: cajaId ?? null
+  })
+}
+
+export const getJornadaDeComprobante = async (comprobanteId: string): Promise<{ jornada_id: string; estado: EstadoJornada } | null> => {
+  const { data } = await getClient().from('jornada_comprobantes')
+    .select('jornada_id, jornadas!inner(estado)')
+    .eq('comprobante_id', comprobanteId).limit(1)
+  if (!data?.length) return null
+  return { jornada_id: data[0].jornada_id, estado: (data[0] as any).jornadas?.estado }
 }
 export interface Cliente {
   id: string; nombre: string; direccion?: string; localidad?: string; provincia?: string; cp?: string

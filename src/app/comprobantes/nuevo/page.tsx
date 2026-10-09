@@ -661,7 +661,7 @@ Débito / Transferencia: ${m(debito)}
 • 12 cuotas fijas: ${m(visa12c)}/cuota
 ` : ''
 
-  const texto = `*${e.nombre || 'Hornero Materiales'} — Presupuesto ${fmt(comp.punto_venta, comp.numero)}*
+  const texto = `*${e.nombre || 'El Obralista'} — Presupuesto ${fmt(comp.punto_venta, comp.numero)}*
 
 📋 *Detalle:*
 ${detalleLista}

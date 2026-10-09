@@ -1605,7 +1605,7 @@ function imprimirComprobante(comp:Comprobante, empresa:EmpresaConfig|null){
     </table>
   </div>`}
 
-  <div class="pie">Comprobante generado por Hornero — Sistema de Gestión</div>
+  <div class="pie">Comprobante generado por El Obralista — Sistema de Gestión</div>
   <script>window.onload=function(){window.print()}</script>
   </body></html>`
   const w = window.open('', '_blank')
@@ -2948,6 +2948,7 @@ const MODULOS = {
     label:'Logística', icon:'🚚',
     nav:[
       {id:'dashboard',icon:'📊',label:'Panel'},
+      {id:'jornada',icon:'🚛',label:'Jornada'},
       {id:'pedidos',icon:'📦',label:'Pedidos'},
       {id:'rutas',icon:'🗺️',label:'Rutas'},
       {id:'compras',icon:'🛒',label:'Compras'},
@@ -3088,7 +3089,7 @@ export default function App() {
         <div style={{width:32,height:32,borderRadius:8,background:C.accent,
           display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>🏗️</div>
         <div>
-          <div style={{fontWeight:800,fontSize:15,color:C.text}}>Hornero</div>
+          <div style={{fontWeight:800,fontSize:15,color:C.text}}>El Obralista</div>
           <div style={{fontSize:10,color:C.textMuted}}>Sistema de Gestión</div>
         </div>
       </div>
@@ -3146,7 +3147,11 @@ export default function App() {
     {/* Bottom Nav */}
     <div style={{background:C.surface,borderTop:`1px solid ${C.border}`,
       display:'flex',position:'sticky',bottom:0,zIndex:100,overflowX:'auto'}}>
-      {MODULOS[modulo].nav.map(item=><button key={item.id} onClick={()=>{setVista(item.id);try{localStorage.setItem('logiobra_vista',item.id)}catch{}}} style={{
+      {MODULOS[modulo].nav.map(item=><button key={item.id} onClick={()=>{
+        if(item.id==='jornada'){window.location.href='/jornada';return}
+        if(item.id==='config'&&modulo==='gestion'){window.location.href='/config';return}
+        setVista(item.id);try{localStorage.setItem('logiobra_vista',item.id)}catch{}
+      }} style={{
         flex:'1 0 auto',minWidth:64,padding:'8px 6px 10px',background:'none',border:'none',
         color:vista===item.id?C.accent:C.textDim,cursor:'pointer',
         display:'flex',flexDirection:'column',alignItems:'center',gap:2,

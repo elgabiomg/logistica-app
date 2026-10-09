@@ -1,7 +1,7 @@
 {
-  "name": "LogiObra",
-  "short_name": "LogiObra",
-  "description": "Sistema de Logistica para Obras",
+  "name": "El Obralista",
+  "short_name": "Obralista",
+  "description": "Sistema de Gestión — El Obralista",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0F1117",
