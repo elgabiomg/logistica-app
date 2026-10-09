@@ -511,6 +511,24 @@ export const registrarCobroJornada = async (
   })
 }
 
+export const registrarEgresoCompra = async (
+  concepto: string, monto: number, jornadaId: string
+): Promise<void> => {
+  const { error } = await getClient().from('caja_movimientos').insert({
+    tipo: 'egreso', concepto, monto, medio_pago: 'efectivo',
+    categoria: 'Compra de materiales',
+    fecha: new Date().toISOString().slice(0, 10),
+  })
+  if (error) throw error
+}
+
+export const getEgresosJornada = async (fecha: string): Promise<number> => {
+  const { data } = await getClient().from('caja_movimientos')
+    .select('monto').eq('tipo', 'egreso')
+    .eq('categoria', 'Compra de materiales').eq('fecha', fecha)
+  return (data || []).reduce((s: number, r: any) => s + Number(r.monto || 0), 0)
+}
+
 export const generarRemitoNumero = async (jornadaId: string, comprobanteId: string): Promise<number> => {
   const c = getClient()
   const { data } = await c.from('jornada_comprobantes')
