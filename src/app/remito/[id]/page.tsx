@@ -17,6 +17,7 @@ interface RemitoData {
   empresa_localidad: string | null
   empresa_telefono: string | null
   empresa_logo_url: string | null
+  empresa_logo_url_bw: string | null
   empresa_condicion_iva: string | null
   cliente_nombre: string | null
   cliente_direccion: string | null
@@ -43,7 +44,7 @@ function RemitoDoc({ d }: { d: RemitoData }) {
     <div className="remito-doc">
       <div className="remito-header">
         <div className="remito-empresa">
-          {d.empresa_logo_url && <img src={d.empresa_logo_url} alt="Logo" className="remito-logo" />}
+          {(d.empresa_logo_url_bw || d.empresa_logo_url) && <img src={d.empresa_logo_url_bw || d.empresa_logo_url!} alt="Logo" className="remito-logo" />}
           <div>
             <div className="remito-nombre">{d.empresa_nombre || 'El Obralista'}</div>
             {d.empresa_direccion && <div className="remito-dato">{d.empresa_direccion}{d.empresa_localidad ? `, ${d.empresa_localidad}` : ''}</div>}
@@ -170,7 +171,7 @@ export default function RemitoPage({ params }: { params: Promise<{ id: string }>
           fecha_entrega: jc.fecha_entrega_real,
           empresa_nombre: emp.nombre, empresa_cuit: emp.cuit,
           empresa_direccion: emp.direccion, empresa_localidad: emp.localidad,
-          empresa_telefono: emp.telefono, empresa_logo_url: emp.logo_url,
+          empresa_telefono: emp.telefono, empresa_logo_url: emp.logo_url, empresa_logo_url_bw: emp.logo_url_bw || null,
           empresa_condicion_iva: emp.condicion_iva,
           cliente_nombre: comp?.cliente_nombre, cliente_cuit: cliente.cuit,
           cliente_direccion: cliente.direccion, cliente_localidad: cliente.localidad,

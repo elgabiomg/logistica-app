@@ -381,7 +381,7 @@ export const subscribeToEstados = (callback: (pedido: Pedido) => void) => {
 export interface EmpresaConfig {
   id: number; nombre?: string; direccion?: string; localidad?: string; provincia?: string; cp?: string
   cuit?: string; iibb?: string; condicion_iva?: string; inicio_actividad?: string
-  telefono?: string; email?: string; logo_url?: string; punto_venta?: number; pie_comprobante?: string
+  telefono?: string; email?: string; logo_url?: string; logo_url_bw?: string; punto_venta?: number; pie_comprobante?: string
   recargo_general?: number; descuento_general?: number
   descuento_contado_nombre?: string; descuento_contado_pct?: number
   fin_debito_recargo_pct?: number
@@ -566,7 +566,7 @@ export const generarRemitoNumero = async (jornadaId: string, comprobanteId: stri
       remito_numero: siguiente,
       empresa_nombre: emp.nombre, empresa_cuit: emp.cuit,
       empresa_direccion: emp.direccion, empresa_localidad: emp.localidad,
-      empresa_telefono: emp.telefono, empresa_logo_url: emp.logo_url,
+      empresa_telefono: emp.telefono, empresa_logo_url: emp.logo_url, empresa_logo_url_bw: emp.logo_url_bw || null,
       empresa_condicion_iva: emp.condicion_iva, prefijo_remito: emp.prefijo_remito || '0001',
       cliente_nombre: comp?.cliente_nombre, cliente_cuit: cliente.cuit,
       cliente_direccion: cliente.direccion, cliente_localidad: cliente.localidad,
