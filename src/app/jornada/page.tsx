@@ -122,6 +122,7 @@ export default function JornadaPage() {
 
   // Modal egreso de compra
   const [modalEgreso, setModalEgreso] = useState(false)
+  const [costosEditados, setCostosEditados] = useState<Record<string, number>>({})
   const [egresoConcepto, setEgresoConcepto] = useState('')
   const [egresoMonto, setEgresoMonto] = useState('')
 
@@ -479,7 +480,7 @@ export default function JornadaPage() {
                           if (!porProv[prov]) porProv[prov] = { proveedor: prov, items: [] }
                           const existing = porProv[prov].items.find((x: any) => x.detalle === it.detalle)
                           if (existing) existing.cantidad += Number(it.cantidad)
-                          else porProv[prov].items.push({ detalle: it.detalle, cantidad: Number(it.cantidad), unidad: it.materiales?.unidad || '', costo: Number(it.materiales?.costo || 0) })
+                          else porProv[prov].items.push({ detalle: it.detalle, cantidad: Number(it.cantidad), unidad: it.materiales?.unidad || '', costo: Number(it.materiales?.costo || 0), material_id: it.material_id })
                         })
                       })
                       const fmt = (n: number) => '$ ' + Math.round(n).toLocaleString('es-AR')
@@ -547,7 +548,7 @@ ${totalGeneral > 0 ? `<div class="total-final">TOTAL GENERAL — Lista: ${fmt(to
                           if (!porProv[prov]) porProv[prov] = { proveedor: prov, items: [] }
                           const existing = porProv[prov].items.find((x: any) => x.detalle === it.detalle)
                           if (existing) existing.cantidad += Number(it.cantidad)
-                          else porProv[prov].items.push({ detalle: it.detalle, cantidad: Number(it.cantidad), unidad: it.materiales?.unidad || '', costo: Number(it.materiales?.costo || 0) })
+                          else porProv[prov].items.push({ detalle: it.detalle, cantidad: Number(it.cantidad), unidad: it.materiales?.unidad || '', costo: Number(it.materiales?.costo || 0), material_id: it.material_id })
                         })
                       })
                       const money = (n: number) => '$ ' + n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
@@ -562,19 +563,37 @@ ${totalGeneral > 0 ? `<div class="total-final">TOTAL GENERAL — Lista: ${fmt(to
                           {g.items.map((it, i) => {
                             const jcWithIt = jcs.find(jc => (jc.comprobantes as any)?.comprobante_items?.some((x: any) => x.detalle === it.detalle))
                             const comprado = jcWithIt?.comprado || false
-                            const subtotal = it.cantidad * it.costo
+                            const costoActual = costosEditados[it.material_id] ?? it.costo
+                            const subtotal = it.cantidad * costoActual
                             return (
                               <div key={i} style={{ padding: '10px 14px', borderBottom: i < g.items.length - 1 ? `1px solid ${C.border}` : 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
                                 <input type="checkbox" checked={comprado} onChange={e => jcWithIt && toggleCheck(jcWithIt.comprobante_id, 'comprado', e.target.checked)} style={{ width: 18, height: 18 }} />
                                 <div style={{ flex: 1, textDecoration: comprado ? 'line-through' : 'none', color: comprado ? C.textMuted : C.text }}>
                                   <span style={{ fontWeight: 600 }}>{it.cantidad} {it.unidad}</span> · {it.detalle}
                                 </div>
-                                {it.costo > 0 && (
-                                  <div style={{ textAlign: 'right', fontSize: 12, color: C.textMuted, whiteSpace: 'nowrap' }}>
-                                    <div>{money(subtotal)}</div>
-                                    <div style={{ color: '#22c55e', fontSize: 11 }}>c/dto: {money(subtotal * 0.94)}</div>
+                                <div style={{ textAlign: 'right', fontSize: 12, whiteSpace: 'nowrap' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end', marginBottom: 2 }}>
+                                    <span style={{ color: C.textMuted, fontSize: 11 }}>$ </span>
+                                    <input
+                                      type="number"
+                                      value={costoActual || ''}
+                                      onChange={e => setCostosEditados(prev => ({ ...prev, [it.material_id]: Number(e.target.value) }))}
+                                      onBlur={async e => {
+                                        const nuevo = Number(e.target.value)
+                                        if (nuevo > 0 && nuevo !== it.costo && it.material_id) {
+                                          await supabase.from('materiales').update({ costo: nuevo }).eq('id', it.material_id)
+                                          it.costo = nuevo
+                                        }
+                                      }}
+                                      style={{ width: 90, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 5, color: C.text, padding: '2px 6px', fontSize: 12, textAlign: 'right' }}
+                                    />
                                   </div>
-                                )}
+                                  {costoActual > 0 && (
+                                    <div style={{ color: '#22c55e', fontSize: 11 }}>
+                                      sub: {money(subtotal)} · dto: {money(subtotal * 0.94)}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             )
                           })}
