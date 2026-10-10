@@ -468,10 +468,71 @@ export default function JornadaPage() {
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                   <div style={{ fontWeight: 700, fontSize: 15 }}>Lista de compras</div>
-                  <button onClick={() => setModalEgreso(true)}
-                    style={{ background: C.redDim, border: `1px solid ${C.red}40`, color: C.red, borderRadius: 7, padding: '6px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
-                    💸 Registrar gasto
-                  </button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => {
+                      // Construir datos agrupados por proveedor
+                      const porProv: Record<string, { proveedor: string; items: any[] }> = {}
+                      jcs.forEach(jc => {
+                        const comp = jc.comprobantes as any
+                        ;(comp?.comprobante_items || []).filter((it: any) => it.material_id && it.materiales?.proveedor_id).forEach((it: any) => {
+                          const prov = it.materiales?.proveedores?.nombre || 'Sin proveedor'
+                          if (!porProv[prov]) porProv[prov] = { proveedor: prov, items: [] }
+                          const existing = porProv[prov].items.find((x: any) => x.detalle === it.detalle)
+                          if (existing) existing.cantidad += Number(it.cantidad)
+                          else porProv[prov].items.push({ detalle: it.detalle, cantidad: Number(it.cantidad), unidad: it.materiales?.unidad || '', costo: Number(it.materiales?.costo || 0) })
+                        })
+                      })
+                      const fmt = (n: number) => '$ ' + Math.round(n).toLocaleString('es-AR')
+                      const grupos = Object.values(porProv)
+                      const totalGeneral = grupos.reduce((s, g) => s + g.items.reduce((ss, it) => ss + it.cantidad * it.costo, 0), 0)
+                      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Lista de Compras — ${jornadaActiva?.fecha || ''}</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Arial, sans-serif; font-size: 11px; color: #000; padding: 15mm; }
+h1 { font-size: 18px; font-weight: 900; margin-bottom: 4px; }
+.fecha { font-size: 11px; color: #666; margin-bottom: 14px; }
+.proveedor { margin-bottom: 14px; break-inside: avoid; }
+.prov-header { background: #1a1a1a; color: #fff; padding: 6px 10px; font-size: 12px; font-weight: 800; border-radius: 3px 3px 0 0; }
+table { width: 100%; border-collapse: collapse; }
+th { background: #f0f0f0; padding: 5px 8px; text-align: left; border: 1px solid #ddd; font-size: 10px; }
+td { padding: 5px 8px; border: 1px solid #ddd; font-size: 10px; }
+tr:nth-child(even) td { background: #fafafa; }
+.num { text-align: right; }
+.foot { background: #f5f5f5; font-weight: 700; }
+.total-final { margin-top: 16px; text-align: right; font-size: 13px; font-weight: 900; border-top: 2px solid #000; padding-top: 8px; }
+@media print { @page { size: A4; margin: 10mm; } body { padding: 0; } }
+</style></head><body>
+<h1>Lista de Compras</h1>
+<div class="fecha">Jornada: ${jornadaActiva?.fecha || ''} · Generado: ${new Date().toLocaleDateString('es-AR')}</div>
+${grupos.map(g => {
+  const totalLista = g.items.reduce((s, it) => s + it.cantidad * it.costo, 0)
+  const totalEfectivo = totalLista * 0.94
+  return `<div class="proveedor">
+<div class="prov-header">🏪 ${g.proveedor}</div>
+<table>
+<thead><tr><th>Material</th><th style="width:50px">Cant.</th><th style="width:40px">Unid.</th>${g.items.some(i => i.costo > 0) ? '<th style="width:80px">Precio unit.</th><th style="width:85px">Subtotal</th><th style="width:85px">c/dto 6%</th>' : ''}</tr></thead>
+<tbody>
+${g.items.map(it => `<tr>
+<td>${it.detalle}</td>
+<td class="num">${it.cantidad}</td>
+<td>${it.unidad}</td>
+${it.costo > 0 ? `<td class="num">${fmt(it.costo)}</td><td class="num">${fmt(it.cantidad * it.costo)}</td><td class="num" style="color:#166534">${fmt(it.cantidad * it.costo * 0.94)}</td>` : (g.items.some(i => i.costo > 0) ? '<td></td><td></td><td></td>' : '')}
+</tr>`).join('')}
+${totalLista > 0 ? `<tr class="foot"><td colspan="4" style="text-align:right">Total lista:</td><td class="num">${fmt(totalLista)}</td><td class="num" style="color:#166534">${fmt(totalEfectivo)}</td></tr>` : ''}
+</tbody></table></div>`}).join('')}
+${totalGeneral > 0 ? `<div class="total-final">TOTAL GENERAL — Lista: ${fmt(totalGeneral)} · Efectivo −6%: ${fmt(totalGeneral * 0.94)}</div>` : ''}
+</body></html>`
+                      const w = window.open('', '_blank')
+                      if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 400) }
+                    }}
+                    style={{ background: '#1e3a5f', border: '1px solid #3B82F640', color: '#3B82F6', borderRadius: 7, padding: '6px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
+                      🖨️ Imprimir lista
+                    </button>
+                    <button onClick={() => setModalEgreso(true)}
+                      style={{ background: C.redDim, border: `1px solid ${C.red}40`, color: C.red, borderRadius: 7, padding: '6px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
+                      💸 Registrar gasto
+                    </button>
+                  </div>
                 </div>
                 {jcs.length === 0 ? (
                   <div style={{ color: C.textMuted }}>Primero agregá pedidos en Planificar.</div>
