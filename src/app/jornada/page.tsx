@@ -489,39 +489,44 @@ export default function JornadaPage() {
                       const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Lista de Compras — ${jornadaActiva?.fecha || ''}</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: Arial, sans-serif; font-size: 11px; color: #000; padding: 15mm; }
-h1 { font-size: 18px; font-weight: 900; margin-bottom: 4px; }
-.fecha { font-size: 11px; color: #666; margin-bottom: 14px; }
-.proveedor { margin-bottom: 14px; break-inside: avoid; }
-.prov-header { background: #1a1a1a; color: #fff; padding: 6px 10px; font-size: 12px; font-weight: 800; border-radius: 3px 3px 0 0; }
+body { font-family: Arial, sans-serif; font-size: 13px; color: #000; padding: 12mm 15mm; }
+h1 { font-size: 22px; font-weight: 900; margin-bottom: 4px; }
+.fecha { font-size: 12px; color: #555; margin-bottom: 18px; border-bottom: 1px solid #ddd; padding-bottom: 10px; }
+.proveedor { margin-bottom: 20px; page-break-inside: avoid; }
+.prov-header { background: #1a1a1a; color: #fff; padding: 10px 14px; font-size: 14px; font-weight: 800; border-radius: 4px 4px 0 0; letter-spacing: 0.3px; }
 table { width: 100%; border-collapse: collapse; }
-th { background: #f0f0f0; padding: 5px 8px; text-align: left; border: 1px solid #ddd; font-size: 10px; }
-td { padding: 5px 8px; border: 1px solid #ddd; font-size: 10px; }
-tr:nth-child(even) td { background: #fafafa; }
-.num { text-align: right; }
-.foot { background: #f5f5f5; font-weight: 700; }
-.total-final { margin-top: 16px; text-align: right; font-size: 13px; font-weight: 900; border-top: 2px solid #000; padding-top: 8px; }
-@media print { @page { size: A4; margin: 10mm; } body { padding: 0; } }
+th { background: #e8e8e8; padding: 9px 12px; text-align: left; border: 1px solid #ccc; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+td { padding: 11px 12px; border: 1px solid #ddd; font-size: 13px; line-height: 1.4; }
+tr:nth-child(even) td { background: #f7f7f7; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.mat { font-weight: 500; }
+.cant { font-weight: 700; font-size: 14px; }
+.foot td { background: #1a1a1a !important; color: #fff; font-weight: 700; font-size: 13px; padding: 10px 12px; }
+.foot .green { color: #4ade80; }
+.total-final { margin-top: 20px; text-align: right; font-size: 15px; font-weight: 900; border-top: 3px solid #000; padding-top: 12px; line-height: 1.6; }
+.total-final .green { color: #166534; }
+@media print { @page { size: A4; margin: 10mm 12mm; } body { padding: 0; } }
 </style></head><body>
-<h1>Lista de Compras</h1>
-<div class="fecha">Jornada: ${jornadaActiva?.fecha || ''} · Generado: ${new Date().toLocaleDateString('es-AR')}</div>
+<h1>📋 Lista de Compras</h1>
+<div class="fecha">Jornada: ${jornadaActiva?.fecha || ''} &nbsp;·&nbsp; Generado: ${new Date().toLocaleDateString('es-AR')}</div>
 ${grupos.map(g => {
   const totalLista = g.items.reduce((s, it) => s + it.cantidad * it.costo, 0)
   const totalEfectivo = totalLista * 0.94
+  const hasPrecio = g.items.some(i => i.costo > 0)
   return `<div class="proveedor">
 <div class="prov-header">🏪 ${g.proveedor}</div>
 <table>
-<thead><tr><th>Material</th><th style="width:50px">Cant.</th><th style="width:40px">Unid.</th>${g.items.some(i => i.costo > 0) ? '<th style="width:80px">Precio unit.</th><th style="width:85px">Subtotal</th><th style="width:85px">c/dto 6%</th>' : ''}</tr></thead>
+<thead><tr><th>Material</th><th style="width:60px;text-align:center">Cant.</th><th style="width:50px">Unid.</th>${hasPrecio ? '<th style="width:110px">Precio unit.</th><th style="width:110px">Subtotal</th><th style="width:110px">c/dto 6%</th>' : ''}</tr></thead>
 <tbody>
 ${g.items.map(it => `<tr>
-<td>${it.detalle}</td>
-<td class="num">${it.cantidad}</td>
+<td class="mat">${it.detalle}</td>
+<td class="num cant">${it.cantidad}</td>
 <td>${it.unidad}</td>
-${it.costo > 0 ? `<td class="num">${fmt(it.costo)}</td><td class="num">${fmt(it.cantidad * it.costo)}</td><td class="num" style="color:#166534">${fmt(it.cantidad * it.costo * 0.94)}</td>` : (g.items.some(i => i.costo > 0) ? '<td></td><td></td><td></td>' : '')}
+${hasPrecio ? (it.costo > 0 ? `<td class="num">${fmt(it.costo)}</td><td class="num"><strong>${fmt(it.cantidad * it.costo)}</strong></td><td class="num" style="color:#166534"><strong>${fmt(it.cantidad * it.costo * 0.94)}</strong></td>` : '<td></td><td></td><td></td>') : ''}
 </tr>`).join('')}
-${totalLista > 0 ? `<tr class="foot"><td colspan="4" style="text-align:right">Total lista:</td><td class="num">${fmt(totalLista)}</td><td class="num" style="color:#166534">${fmt(totalEfectivo)}</td></tr>` : ''}
+${totalLista > 0 ? `<tr class="foot"><td colspan="${hasPrecio ? 4 : 2}" style="text-align:right">TOTAL ${g.proveedor.toUpperCase()}</td>${hasPrecio ? `<td class="num">${fmt(totalLista)}</td><td class="num green">${fmt(totalEfectivo)}</td>` : ''}</tr>` : ''}
 </tbody></table></div>`}).join('')}
-${totalGeneral > 0 ? `<div class="total-final">TOTAL GENERAL — Lista: ${fmt(totalGeneral)} · Efectivo −6%: ${fmt(totalGeneral * 0.94)}</div>` : ''}
+${totalGeneral > 0 ? `<div class="total-final">TOTAL GENERAL<br><span style="font-size:13px;font-weight:400">Lista: <strong>${fmt(totalGeneral)}</strong> &nbsp;·&nbsp; Efectivo −6%: <strong class="green">${fmt(totalGeneral * 0.94)}</strong></span></div>` : ''}
 </body></html>`
                       const w = window.open('', '_blank')
                       if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 400) }
