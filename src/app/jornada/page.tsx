@@ -480,12 +480,14 @@ export default function JornadaPage() {
                           if (!porProv[prov]) porProv[prov] = { proveedor: prov, items: [] }
                           const existing = porProv[prov].items.find((x: any) => x.detalle === it.detalle)
                           if (existing) existing.cantidad += Number(it.cantidad)
-                          else porProv[prov].items.push({ detalle: it.detalle, cantidad: Number(it.cantidad), unidad: it.materiales?.unidad || '', costo: Number(it.materiales?.costo || 0), material_id: it.material_id })
+                          else porProv[prov].items.push({ detalle: it.detalle, cantidad: Number(it.cantidad), unidad: it.materiales?.unidad || '', costo: Number(it.materiales?.costo || 0), material_id: it.material_id, peso_kg: Number(it.materiales?.peso_kg || 0) })
                         })
                       })
                       const fmt = (n: number) => '$ ' + Math.round(n).toLocaleString('es-AR')
+                      const fmtKg = (kg: number) => kg >= 1000 ? `${(kg/1000).toFixed(2)} t` : `${Math.round(kg)} kg`
                       const grupos = Object.values(porProv)
                       const totalGeneral = grupos.reduce((s, g) => s + g.items.reduce((ss, it) => ss + it.cantidad * it.costo, 0), 0)
+                      const pesoTotal = grupos.reduce((s, g) => s + g.items.reduce((ss, it) => ss + it.cantidad * it.peso_kg, 0), 0)
                       const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Lista de Compras — ${jornadaActiva?.fecha || ''}</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -503,30 +505,46 @@ tr:nth-child(even) td { background: #f7f7f7; }
 .cant { font-weight: 700; font-size: 14px; }
 .foot td { background: #1a1a1a !important; color: #fff; font-weight: 700; font-size: 13px; padding: 10px 12px; }
 .foot .green { color: #4ade80; }
+.foot .blue { color: #93c5fd; }
 .total-final { margin-top: 20px; text-align: right; font-size: 15px; font-weight: 900; border-top: 3px solid #000; padding-top: 12px; line-height: 1.6; }
 .total-final .green { color: #166534; }
+.total-final .blue { color: #1d4ed8; }
 @media print { @page { size: A4; margin: 10mm 12mm; } body { padding: 0; } }
 </style></head><body>
 <h1>📋 Lista de Compras</h1>
 <div class="fecha">Jornada: ${jornadaActiva?.fecha || ''} &nbsp;·&nbsp; Generado: ${new Date().toLocaleDateString('es-AR')}</div>
 ${grupos.map(g => {
-  const totalLista = g.items.reduce((s, it) => s + it.cantidad * it.costo, 0)
+  const totalLista = g.items.reduce((s: number, it: any) => s + it.cantidad * it.costo, 0)
   const totalEfectivo = totalLista * 0.94
-  const hasPrecio = g.items.some(i => i.costo > 0)
+  const pesoProv = g.items.reduce((s: number, it: any) => s + it.cantidad * it.peso_kg, 0)
+  const hasPrecio = g.items.some((i: any) => i.costo > 0)
+  const hasPeso = g.items.some((i: any) => i.peso_kg > 0)
+  const cols = hasPrecio ? (hasPeso ? 7 : 6) : (hasPeso ? 4 : 3)
   return `<div class="proveedor">
-<div class="prov-header">🏪 ${g.proveedor}</div>
+<div class="prov-header">🏪 ${g.proveedor}${pesoProv > 0 ? ` &nbsp;·&nbsp; ⚖️ ${pesoProv >= 1000 ? (pesoProv/1000).toFixed(2)+' t' : Math.round(pesoProv)+' kg'}` : ''}</div>
 <table>
-<thead><tr><th>Material</th><th style="width:60px;text-align:center">Cant.</th><th style="width:50px">Unid.</th>${hasPrecio ? '<th style="width:110px">Precio unit.</th><th style="width:110px">Subtotal</th><th style="width:110px">c/dto 6%</th>' : ''}</tr></thead>
+<thead><tr><th>Material</th><th style="width:60px;text-align:center">Cant.</th><th style="width:50px">Unid.</th>${hasPeso ? '<th style="width:80px">Peso unit.</th><th style="width:80px">Peso total</th>' : ''}${hasPrecio ? '<th style="width:100px">Precio unit.</th><th style="width:100px">Subtotal</th><th style="width:100px">c/dto 6%</th>' : ''}</tr></thead>
 <tbody>
-${g.items.map(it => `<tr>
+${g.items.map((it: any) => `<tr>
 <td class="mat">${it.detalle}</td>
 <td class="num cant">${it.cantidad}</td>
 <td>${it.unidad}</td>
-${hasPrecio ? (it.costo > 0 ? `<td class="num">${fmt(it.costo)}</td><td class="num"><strong>${fmt(it.cantidad * it.costo)}</strong></td><td class="num" style="color:#166534"><strong>${fmt(it.cantidad * it.costo * 0.94)}</strong></td>` : '<td></td><td></td><td></td>') : ''}
+${hasPeso ? `<td class="num" style="color:#555">${it.peso_kg > 0 ? it.peso_kg+' kg' : '—'}</td><td class="num" style="font-weight:600;color:#1d4ed8">${it.peso_kg > 0 ? (it.cantidad*it.peso_kg >= 1000 ? ((it.cantidad*it.peso_kg)/1000).toFixed(2)+' t' : Math.round(it.cantidad*it.peso_kg)+' kg') : '—'}</td>` : ''}
+${hasPrecio ? (it.costo > 0 ? `<td class="num">${fmt(it.costo)}</td><td class="num"><strong>${fmt(it.cantidad * it.costo)}</strong></td><td class="num" style="color:#166534"><strong>${fmt(it.cantidad * it.costo * 0.94)}</strong></td>` : `<td></td><td></td><td></td>`) : ''}
 </tr>`).join('')}
-${totalLista > 0 ? `<tr class="foot"><td colspan="${hasPrecio ? 4 : 2}" style="text-align:right">TOTAL ${g.proveedor.toUpperCase()}</td>${hasPrecio ? `<td class="num">${fmt(totalLista)}</td><td class="num green">${fmt(totalEfectivo)}</td>` : ''}</tr>` : ''}
+<tr class="foot">
+  <td colspan="${hasPeso ? (hasPrecio ? 4 : 2) : (hasPrecio ? 2 : 2)}" style="text-align:right">TOTAL ${g.proveedor.toUpperCase()}</td>
+  ${hasPeso ? `<td class="num blue" colspan="2">${pesoProv >= 1000 ? (pesoProv/1000).toFixed(2)+' t' : Math.round(pesoProv)+' kg'}</td>` : ''}
+  ${hasPrecio && totalLista > 0 ? `<td></td><td class="num">${fmt(totalLista)}</td><td class="num green">${fmt(totalEfectivo)}</td>` : (hasPrecio ? '<td></td><td></td><td></td>' : '')}
+</tr>
 </tbody></table></div>`}).join('')}
-${totalGeneral > 0 ? `<div class="total-final">TOTAL GENERAL<br><span style="font-size:13px;font-weight:400">Lista: <strong>${fmt(totalGeneral)}</strong> &nbsp;·&nbsp; Efectivo −6%: <strong class="green">${fmt(totalGeneral * 0.94)}</strong></span></div>` : ''}
+<div class="total-final">
+  TOTAL GENERAL<br>
+  <span style="font-size:13px;font-weight:400">
+    ${pesoTotal > 0 ? `Peso estimado: <strong class="blue">${pesoTotal >= 1000 ? (pesoTotal/1000).toFixed(2)+' t' : Math.round(pesoTotal)+' kg'}</strong> &nbsp;·&nbsp; ` : ''}
+    ${totalGeneral > 0 ? `Lista: <strong>${fmt(totalGeneral)}</strong> &nbsp;·&nbsp; Efectivo −6%: <strong class="green">${fmt(totalGeneral * 0.94)}</strong>` : ''}
+  </span>
+</div>
 </body></html>`
                       const w = window.open('', '_blank')
                       if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 400) }
@@ -553,17 +571,31 @@ ${totalGeneral > 0 ? `<div class="total-final">TOTAL GENERAL<br><span style="fon
                           if (!porProv[prov]) porProv[prov] = { proveedor: prov, items: [] }
                           const existing = porProv[prov].items.find((x: any) => x.detalle === it.detalle)
                           if (existing) existing.cantidad += Number(it.cantidad)
-                          else porProv[prov].items.push({ detalle: it.detalle, cantidad: Number(it.cantidad), unidad: it.materiales?.unidad || '', costo: Number(it.materiales?.costo || 0), material_id: it.material_id })
+                          else porProv[prov].items.push({ detalle: it.detalle, cantidad: Number(it.cantidad), unidad: it.materiales?.unidad || '', costo: Number(it.materiales?.costo || 0), material_id: it.material_id, peso_kg: Number(it.materiales?.peso_kg || 0) })
                         })
                       })
                       const money = (n: number) => '$ ' + n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
-                      return Object.values(porProv).map(g => {
+                      const fmtKg = (kg: number) => kg >= 1000 ? `${(kg/1000).toFixed(2)} t` : `${Math.round(kg)} kg`
+                      const grupos = Object.values(porProv)
+                      const pesoTotal = grupos.reduce((s, g) => s + g.items.reduce((ss, it) => ss + it.cantidad * it.peso_kg, 0), 0)
+                      return (
+                        <>
+                        {pesoTotal > 0 && (
+                          <div style={{ background: '#1e3a5f', border: '1px solid #3B82F640', borderRadius: 10, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+                            <span style={{ fontSize: 18 }}>⚖️</span>
+                            <span style={{ color: C.textMuted }}>Peso total estimado del pedido:</span>
+                            <strong style={{ color: '#93c5fd', fontSize: 15 }}>{fmtKg(pesoTotal)}</strong>
+                          </div>
+                        )}
+                        {grupos.map(g => {
                         const totalLista = g.items.reduce((s, it) => s + it.cantidad * it.costo, 0)
                         const totalEfectivo = totalLista * 0.94
+                        const pesoProv = g.items.reduce((s, it) => s + it.cantidad * it.peso_kg, 0)
                         return (
                         <div key={g.proveedor} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
                           <div style={{ padding: '10px 14px', background: C.surfaceAlt, fontWeight: 700, fontSize: 13, borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span>🏪 {g.proveedor}</span>
+                            {pesoProv > 0 && <span style={{ color: '#93c5fd', fontSize: 12, fontWeight: 600 }}>⚖️ {fmtKg(pesoProv)}</span>}
                           </div>
                           {g.items.map((it, i) => {
                             const jcWithIt = jcs.find(jc => (jc.comprobantes as any)?.comprobante_items?.some((x: any) => x.detalle === it.detalle))
@@ -593,6 +625,11 @@ ${totalGeneral > 0 ? `<div class="total-final">TOTAL GENERAL<br><span style="fon
                                       style={{ width: 90, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 5, color: C.text, padding: '2px 6px', fontSize: 12, textAlign: 'right' }}
                                     />
                                   </div>
+                                  {it.peso_kg > 0 && (
+                                    <div style={{ color: '#93c5fd', fontSize: 11, marginBottom: 1 }}>
+                                      ⚖️ {fmtKg(it.cantidad * it.peso_kg)}
+                                    </div>
+                                  )}
                                   {costoActual > 0 && (
                                     <div style={{ color: '#22c55e', fontSize: 11 }}>
                                       sub: {money(subtotal)} · dto: {money(subtotal * 0.94)}
@@ -602,15 +639,20 @@ ${totalGeneral > 0 ? `<div class="total-final">TOTAL GENERAL<br><span style="fon
                               </div>
                             )
                           })}
-                          {totalLista > 0 && (
+                          {(totalLista > 0 || pesoProv > 0) && (
                             <div style={{ padding: '10px 14px', background: C.surfaceAlt, borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'flex-end', gap: 20, fontSize: 13 }}>
-                              <div style={{ color: C.textMuted }}>Lista: <strong style={{ color: C.text }}>{money(totalLista)}</strong></div>
-                              <div style={{ color: '#22c55e' }}>Efectivo −6%: <strong>{money(totalEfectivo)}</strong></div>
+                              {pesoProv > 0 && <div style={{ color: '#93c5fd' }}>⚖️ <strong>{fmtKg(pesoProv)}</strong></div>}
+                              {totalLista > 0 && <>
+                                <div style={{ color: C.textMuted }}>Lista: <strong style={{ color: C.text }}>{money(totalLista)}</strong></div>
+                                <div style={{ color: '#22c55e' }}>Efectivo −6%: <strong>{money(totalEfectivo)}</strong></div>
+                              </>}
                             </div>
                           )}
                         </div>
                         )
-                      })
+                      })}
+                        </>
+                      )
                     })()}
                   </div>
                 )}
